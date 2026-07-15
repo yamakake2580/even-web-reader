@@ -39,5 +39,8 @@ export async function loadBookshelf(): Promise<{ state: BookshelfState; spec: Pa
 
 export function selectedNovel(state: BookshelfState, event: List_ItemEvent): NovelSummary | null {
   if (state.novels.length === 0) return null
+  // Known quirk: selecting the first item can arrive without
+  // currentSelectItemIndex set at all, so default to index 0 rather than
+  // dropping the event.
   return state.novels[event.currentSelectItemIndex ?? 0] ?? null
 }

@@ -41,5 +41,6 @@ export async function loadChapterList(novelId: string): Promise<{ state: Chapter
 
 export function selectedChapter(state: ChapterListState, event: List_ItemEvent): ChapterMeta | null {
   if (state.chapters.length === 0) return null
+  // Same index-0 quirk as bookshelf.ts's selectedNovel - see comment there.
   return state.chapters[event.currentSelectItemIndex ?? 0] ?? null
 }

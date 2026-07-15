@@ -2,6 +2,7 @@ import {
   waitForEvenAppBridge,
   CreateStartUpPageContainer,
   RebuildPageContainer,
+  TextContainerProperty,
   OsEventTypeList,
   type EvenHubEvent,
 } from '@evenrealities/even_hub_sdk'
@@ -36,27 +37,77 @@ async function present(spec: PageSpec): Promise<void> {
   }
 }
 
+// Backend-unreachable (or other load failure) handling: leave whatever was
+// last successfully shown on the glasses in place rather than tearing it
+// down, and surface the failure on the phone-side status line where the
+// user can act on it (e.g. fix the backend URL). If nothing has ever been
+// shown yet (very first launch fails), fall back to a one-off error text
+// container so the glasses aren't left blank.
+let lastError: string | null = null
+
+async function presentError(message: string): Promise<void> {
+  lastError = message
+  if (!launched) {
+    await present({
+      containerTotalNum: 1,
+      textObject: [
+        new TextContainerProperty({
+          xPosition: 0,
+          yPosition: 0,
+          width: 576,
+          height: 288,
+          borderWidth: 0,
+          borderColor: 5,
+          paddingLength: 8,
+          containerID: 1,
+          containerName: 'error',
+          content: message,
+          isEventCapture: 0,
+        }),
+      ],
+    })
+  }
+}
+
 async function goToBookshelf(): Promise<void> {
-  const { state, spec } = await loadBookshelf()
-  screen = { name: 'bookshelf', state }
-  await present(spec)
+  try {
+    const { state, spec } = await loadBookshelf()
+    screen = { name: 'bookshelf', state }
+    lastError = null
+    await present(spec)
+  } catch (err) {
+    console.error(err)
+    await presentError('本棚を取得できませんでした。Backend URLを確認してください。')
+  }
   mirrorCompanion()
 }
 
 async function goToChapterList(novelId: string): Promise<void> {
-  const { state, spec } = await loadChapterList(novelId)
-  screen = { name: 'chapterList', state }
-  await present(spec)
+  try {
+    const { state, spec } = await loadChapterList(novelId)
+    screen = { name: 'chapterList', state }
+    lastError = null
+    await present(spec)
+  } catch (err) {
+    console.error(err)
+    lastError = '話数リストを取得できませんでした。'
+  }
   mirrorCompanion()
 }
 
 async function goToReader(novelId: string, episode: string): Promise<void> {
-  const saved = getReadingPosition()
-  const startPage = saved && saved.novelId === novelId && saved.episode === episode ? saved.pageIndex : 0
-  const { state, spec } = await loadReader(novelId, episode, startPage)
-  screen = { name: 'reader', state }
-  setReadingPosition({ novelId, episode, pageIndex: state.currentPage })
-  await present(spec)
+  try {
+    const saved = getReadingPosition()
+    const startPage = saved && saved.novelId === novelId && saved.episode === episode ? saved.pageIndex : 0
+    const { state, spec } = await loadReader(novelId, episode, startPage)
+    screen = { name: 'reader', state }
+    lastError = null
+    setReadingPosition({ novelId, episode, pageIndex: state.currentPage })
+    await present(spec)
+  } catch (err) {
+    console.error(err)
+    lastError = '本文を取得できませんでした。'
+  }
   mirrorCompanion()
 }
 
@@ -76,7 +127,17 @@ function isDoubleClick(event: EvenHubEvent): boolean {
   )
 }
 
+// Some devices/hosts have been observed delivering a single physical tap as
+// more than one event; a short cooldown avoids double-advancing pages or
+// double-navigating on what the user experienced as one tap.
+const EVENT_DEBOUNCE_MS = 150
+let lastEventAt = 0
+
 const unsubscribe = bridge.onEvenHubEvent((event) => {
+  const now = Date.now()
+  if (now - lastEventAt < EVENT_DEBOUNCE_MS) return
+  lastEventAt = now
+
   if (!screen) return
 
   if (isDoubleClick(event)) {
@@ -190,6 +251,8 @@ function mirrorCompanion(): void {
   const title = document.getElementById('screenTitle')
   const mirror = document.getElementById('mirror')
   const count = document.getElementById('pageCount')
+  const status = document.getElementById('companionStatus')
+  if (status && lastError) status.textContent = lastError
   if (!title || !mirror || !count || !screen) return
 
   if (screen.name === 'bookshelf') {
