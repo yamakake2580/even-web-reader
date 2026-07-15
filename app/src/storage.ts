@@ -33,3 +33,23 @@ export function setStorage(key: StorageKey, value: string): void {
   cache.set(key, value)
   bridgeRef?.setLocalStorage(key, value).catch((err) => console.error(`setLocalStorage(${key}) failed:`, err))
 }
+
+export interface ReadingPosition {
+  novelId: string
+  episode: string
+  pageIndex: number
+}
+
+export function getReadingPosition(): ReadingPosition | null {
+  const raw = getStorage('reading_position')
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as ReadingPosition
+  } catch {
+    return null
+  }
+}
+
+export function setReadingPosition(position: ReadingPosition): void {
+  setStorage('reading_position', JSON.stringify(position))
+}

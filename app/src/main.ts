@@ -10,7 +10,7 @@ import { loadBookshelf, selectedNovel, type BookshelfState } from './screens/boo
 import { loadChapterList, selectedChapter, type ChapterListState } from './screens/chapterList'
 import { loadReader, showReaderPage, pagerLabel, type ReaderState } from './screens/reader'
 import type { PageSpec } from './screens/types'
-import { getStorage, initStorage, setStorage } from './storage'
+import { getReadingPosition, getStorage, initStorage, setReadingPosition, setStorage } from './storage'
 
 const bridge = await waitForEvenAppBridge()
 await initStorage(bridge)
@@ -51,9 +51,20 @@ async function goToChapterList(novelId: string): Promise<void> {
 }
 
 async function goToReader(novelId: string, episode: string): Promise<void> {
-  const { state, spec } = await loadReader(novelId, episode)
+  const saved = getReadingPosition()
+  const startPage = saved && saved.novelId === novelId && saved.episode === episode ? saved.pageIndex : 0
+  const { state, spec } = await loadReader(novelId, episode, startPage)
   screen = { name: 'reader', state }
+  setReadingPosition({ novelId, episode, pageIndex: state.currentPage })
   await present(spec)
+  mirrorCompanion()
+}
+
+async function turnReaderPage(state: ReaderState, index: number): Promise<void> {
+  const changed = await showReaderPage(bridge, state, index)
+  if (changed) {
+    setReadingPosition({ novelId: state.novelId, episode: state.episode, pageIndex: state.currentPage })
+  }
   mirrorCompanion()
 }
 
@@ -97,15 +108,11 @@ const unsubscribe = bridge.onEvenHubEvent((event) => {
     const readerState = screen.state
 
     if (textType === OsEventTypeList.SCROLL_TOP_EVENT) {
-      showReaderPage(bridge, readerState, readerState.currentPage - 1)
-        .then(mirrorCompanion)
-        .catch((err) => console.error(err))
+      turnReaderPage(readerState, readerState.currentPage - 1).catch((err) => console.error(err))
       return
     }
     if (textType === OsEventTypeList.SCROLL_BOTTOM_EVENT || sysType === OsEventTypeList.CLICK_EVENT) {
-      showReaderPage(bridge, readerState, readerState.currentPage + 1)
-        .then(mirrorCompanion)
-        .catch((err) => console.error(err))
+      turnReaderPage(readerState, readerState.currentPage + 1).catch((err) => console.error(err))
       return
     }
   }
