@@ -239,6 +239,16 @@ document.getElementById('backendUrlSave')?.addEventListener('click', () => {
   if (!value) return
   setStorage('backend_url', value)
   companionStatus.textContent = 'Backend URLを保存しました'
+  // Retry whichever screen is active (most importantly: bookshelf, which is
+  // likely showing the "backend unreachable" error from before the URL was
+  // corrected) now that the URL has changed.
+  if (!screen || screen.name === 'bookshelf') {
+    goToBookshelf().catch((err) => console.error(err))
+  } else if (screen.name === 'chapterList') {
+    goToChapterList(screen.state.novelId).catch((err) => console.error(err))
+  } else if (screen.name === 'reader') {
+    goToReader(screen.state.novelId, screen.state.episode).catch((err) => console.error(err))
+  }
 })
 
 document.getElementById('novelUrlAdd')?.addEventListener('click', () => {
