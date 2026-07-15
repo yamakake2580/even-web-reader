@@ -1,157 +1,169 @@
 import {
   waitForEvenAppBridge,
-  TextContainerProperty,
   CreateStartUpPageContainer,
-  TextContainerUpgrade,
+  RebuildPageContainer,
   OsEventTypeList,
+  type EvenHubEvent,
 } from '@evenrealities/even_hub_sdk'
-import { paginate } from './paginate'
-import { fetchChapter } from './api'
+import { loadBookshelf, selectedNovel, type BookshelfState } from './screens/bookshelf'
+import { loadChapterList, selectedChapter, type ChapterListState } from './screens/chapterList'
+import { loadReader, showReaderPage, pagerLabel, type ReaderState } from './screens/reader'
+import type { PageSpec } from './screens/types'
 
-// Body container geometry. Inner box (width/height minus padding and border)
-// is what pretext measures against, so keep these in sync if you resize.
-const BODY_W = 576
-const BODY_H = 240
-const BODY_PAD = 4
-const BODY_BORDER = 0
-const INNER_W = BODY_W - 2 * (BODY_PAD + BODY_BORDER)
-const INNER_H = BODY_H - 2 * (BODY_PAD + BODY_BORDER)
+const bridge = await waitForEvenAppBridge()
 
-// Milestone 8: prove the backend<->glasses pipeline end to end with one
-// hardcoded chapter. Bookshelf/chapter-list navigation lands in later milestones.
-const bridgePromise = waitForEvenAppBridge()
-const chapter = await fetchChapter('1', '1')
-const pages = paginate(chapter.text, { width: INNER_W, height: INNER_H })
-let currentPage = 0
+type Screen =
+  | { name: 'bookshelf'; state: BookshelfState }
+  | { name: 'chapterList'; state: ChapterListState }
+  | { name: 'reader'; state: ReaderState }
 
-const bridge = await bridgePromise
+let screen: Screen | null = null
 
-const body = new TextContainerProperty({
-  xPosition: 0,
-  yPosition: 0,
-  width: BODY_W,
-  height: BODY_H,
-  borderWidth: BODY_BORDER,
-  borderColor: 5,
-  paddingLength: BODY_PAD,
-  containerID: 1,
-  containerName: 'body',
-  content: pages[0] ?? '(empty)',
-  isEventCapture: 1,
-})
-
-const pager = new TextContainerProperty({
-  xPosition: 0,
-  yPosition: 250,
-  width: 576,
-  height: 30,
-  borderWidth: 0,
-  borderColor: 5,
-  paddingLength: 4,
-  containerID: 2,
-  containerName: 'pager',
-  content: pagerLabel(),
-  isEventCapture: 0,
-})
-
-const created = await bridge.createStartUpPageContainer(
-  new CreateStartUpPageContainer({ containerTotalNum: 2, textObject: [body, pager] }),
-)
-if (created !== 0) console.error('createStartUpPageContainer failed:', created)
-
-function pagerLabel() {
-  return `${currentPage + 1} / ${pages.length}  ·  tap: next  ·  swipe up: prev  ·  double-tap: exit`
+// createStartUpPageContainer is required for an app's very first screen;
+// every screen transition after that must use rebuildPageContainer instead.
+let launched = false
+async function present(spec: PageSpec): Promise<void> {
+  if (!launched) {
+    launched = true
+    const result = await bridge.createStartUpPageContainer(new CreateStartUpPageContainer(spec))
+    if (result !== 0) console.error('createStartUpPageContainer failed:', result)
+  } else {
+    const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(spec))
+    if (!ok) console.error('rebuildPageContainer failed')
+  }
 }
 
-// Serialize bridge writes so a fast-tapping user can't queue overlapping upgrades.
-let rendering: Promise<unknown> = Promise.resolve()
-async function showPage(index: number) {
-  if (index < 0 || index >= pages.length || index === currentPage) return
-  currentPage = index
-  rendering = rendering.then(async () => {
-    await bridge.textContainerUpgrade(
-      new TextContainerUpgrade({
-        containerID: 1,
-        containerName: 'body',
-        content: pages[index],
-      }),
-    )
-    await bridge.textContainerUpgrade(
-      new TextContainerUpgrade({
-        containerID: 2,
-        containerName: 'pager',
-        content: pagerLabel(),
-      }),
-    )
-  })
-  await rendering
+async function goToBookshelf(): Promise<void> {
+  const { state, spec } = await loadBookshelf()
+  screen = { name: 'bookshelf', state }
+  await present(spec)
   mirrorCompanion()
 }
 
-let cleanedUp = false
-function cleanup() {
-  if (cleanedUp) return
-  cleanedUp = true
-  unsubscribe()
+async function goToChapterList(novelId: string): Promise<void> {
+  const { state, spec } = await loadChapterList(novelId)
+  screen = { name: 'chapterList', state }
+  await present(spec)
+  mirrorCompanion()
 }
 
-// Event routing, critical details:
-//   • Protobuf omits zero-value fields on the wire, so CLICK_EVENT (0)
-//     arrives as `undefined`. Always coalesce with `?? 0` before comparing.
-//   • Scroll gestures (SCROLL_TOP/SCROLL_BOTTOM) route through
-//     `event.textEvent`. Taps/double-taps/lifecycle route through
-//     `event.sysEvent`. Check each branch separately.
-//   • Double-tap → `shutDownPageContainer(1)` is a root-level check: it
-//     must fire no matter which envelope the event arrives in, so users
-//     can always exit the app.
-const unsubscribe = bridge.onEvenHubEvent(event => {
+async function goToReader(novelId: string, episode: string): Promise<void> {
+  const { state, spec } = await loadReader(novelId, episode)
+  screen = { name: 'reader', state }
+  await present(spec)
+  mirrorCompanion()
+}
+
+function isDoubleClick(event: EvenHubEvent): boolean {
+  return (
+    event.sysEvent?.eventType === OsEventTypeList.DOUBLE_CLICK_EVENT ||
+    event.textEvent?.eventType === OsEventTypeList.DOUBLE_CLICK_EVENT ||
+    event.listEvent?.eventType === OsEventTypeList.DOUBLE_CLICK_EVENT
+  )
+}
+
+const unsubscribe = bridge.onEvenHubEvent((event) => {
+  if (!screen) return
+
+  if (isDoubleClick(event)) {
+    if (screen.name === 'bookshelf') {
+      bridge.shutDownPageContainer(1)
+    } else if (screen.name === 'chapterList') {
+      goToBookshelf().catch((err) => console.error(err))
+    } else if (screen.name === 'reader') {
+      goToChapterList(screen.state.novelId).catch((err) => console.error(err))
+    }
+    return
+  }
+
+  if (screen.name === 'bookshelf' && event.listEvent?.eventType === OsEventTypeList.CLICK_EVENT) {
+    const novel = selectedNovel(screen.state, event.listEvent)
+    if (novel) goToChapterList(novel.id).catch((err) => console.error(err))
+    return
+  }
+
+  if (screen.name === 'chapterList' && event.listEvent?.eventType === OsEventTypeList.CLICK_EVENT) {
+    const chapter = selectedChapter(screen.state, event.listEvent)
+    if (chapter) goToReader(screen.state.novelId, chapter.episode).catch((err) => console.error(err))
+    return
+  }
+
+  if (screen.name === 'reader') {
+    const textType = event.textEvent?.eventType ?? null
+    const sysType = event.sysEvent?.eventType ?? null
+    const readerState = screen.state
+
+    if (textType === OsEventTypeList.SCROLL_TOP_EVENT) {
+      showReaderPage(bridge, readerState, readerState.currentPage - 1)
+        .then(mirrorCompanion)
+        .catch((err) => console.error(err))
+      return
+    }
+    if (textType === OsEventTypeList.SCROLL_BOTTOM_EVENT || sysType === OsEventTypeList.CLICK_EVENT) {
+      showReaderPage(bridge, readerState, readerState.currentPage + 1)
+        .then(mirrorCompanion)
+        .catch((err) => console.error(err))
+      return
+    }
+  }
+
   const sysType = event.sysEvent?.eventType ?? null
-  const textType = event.textEvent?.eventType ?? null
-
-  if (sysType === OsEventTypeList.DOUBLE_CLICK_EVENT || textType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-    bridge.shutDownPageContainer(1)
-    return
-  }
-
-  if (textType === OsEventTypeList.SCROLL_TOP_EVENT) {
-    showPage(currentPage - 1).catch(err => console.error(err))
-    return
-  }
-  if (textType === OsEventTypeList.SCROLL_BOTTOM_EVENT) {
-    showPage(currentPage + 1).catch(err => console.error(err))
-    return
-  }
-
-  if (sysType === OsEventTypeList.CLICK_EVENT) {
-    showPage(currentPage + 1).catch(err => console.error(err))
-    return
-  }
   if (sysType === OsEventTypeList.SYSTEM_EXIT_EVENT || sysType === OsEventTypeList.ABNORMAL_EXIT_EVENT) {
     cleanup()
   }
 })
 
+let cleanedUp = false
+function cleanup(): void {
+  if (cleanedUp) return
+  cleanedUp = true
+  unsubscribe()
+}
 window.addEventListener('beforeunload', cleanup)
 
 const app = document.querySelector<HTMLDivElement>('#app')!
 app.innerHTML = `
   <main style="margin:auto;padding:24px;max-width:680px;box-sizing:border-box;">
     <header style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <h1 style="font-size:18px;font-weight:600;margin:0;">Text-Heavy Reader</h1>
+      <h1 id="screenTitle" style="font-size:18px;font-weight:600;margin:0;">Even Web Reader</h1>
       <span id="pageCount" style="font-size:12px;color:#919191;"></span>
     </header>
-    <pre id="mirror" style="background:#2E2E2E;border:1px solid #3E3E3E;border-radius:12px;padding:20px;font-size:15px;line-height:1.55;white-space:pre-wrap;word-break:break-word;color:#E5E5E5;margin:0;"></pre>
+    <div id="mirror" style="background:#2E2E2E;border:1px solid #3E3E3E;border-radius:12px;padding:20px;font-size:15px;line-height:1.55;color:#E5E5E5;margin:0;"></div>
     <footer style="font-size:12px;color:#7B7B7B;text-align:center;margin-top:16px;">
-      Tap glasses: next page · swipe up: previous · double-tap: exit
+      Tap glasses: select / next page · swipe up: previous · double-tap: back
     </footer>
   </main>
 `
 
-function mirrorCompanion() {
+function mirrorCompanion(): void {
+  const title = document.getElementById('screenTitle')
   const mirror = document.getElementById('mirror')
   const count = document.getElementById('pageCount')
-  if (mirror) mirror.textContent = pages[currentPage] ?? ''
-  if (count) count.textContent = `${currentPage + 1} / ${pages.length}`
+  if (!title || !mirror || !count || !screen) return
+
+  if (screen.name === 'bookshelf') {
+    title.textContent = '本棚'
+    count.textContent = `${screen.state.novels.length} 冊`
+    mirror.innerHTML = listHtml(screen.state.novels.map((n) => n.title))
+  } else if (screen.name === 'chapterList') {
+    title.textContent = screen.state.novelTitle
+    count.textContent = `${screen.state.chapters.length} 話`
+    mirror.innerHTML = listHtml(screen.state.chapters.map((c) => c.title))
+  } else {
+    title.textContent = screen.state.title
+    count.textContent = `${screen.state.currentPage + 1} / ${screen.state.pages.length}`
+    mirror.innerHTML = `<pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit;">${escapeHtml(
+      screen.state.pages[screen.state.currentPage] ?? '',
+    )}</pre><div style="font-size:12px;color:#919191;margin-top:12px;">${escapeHtml(pagerLabel(screen.state))}</div>`
+  }
 }
 
-mirrorCompanion()
+function listHtml(items: string[]): string {
+  return `<ol style="margin:0;padding-left:20px;">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ol>`
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!)
+}
+
+await goToBookshelf()
