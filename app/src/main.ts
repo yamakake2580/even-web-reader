@@ -6,7 +6,7 @@ import {
   OsEventTypeList,
 } from '@evenrealities/even_hub_sdk'
 import { paginate } from './paginate'
-import { SAMPLE_TEXT } from './sample'
+import { fetchChapter } from './api'
 
 // Body container geometry. Inner box (width/height minus padding and border)
 // is what pretext measures against, so keep these in sync if you resize.
@@ -17,10 +17,14 @@ const BODY_BORDER = 0
 const INNER_W = BODY_W - 2 * (BODY_PAD + BODY_BORDER)
 const INNER_H = BODY_H - 2 * (BODY_PAD + BODY_BORDER)
 
-const pages = paginate(SAMPLE_TEXT, { width: INNER_W, height: INNER_H })
+// Milestone 8: prove the backend<->glasses pipeline end to end with one
+// hardcoded chapter. Bookshelf/chapter-list navigation lands in later milestones.
+const bridgePromise = waitForEvenAppBridge()
+const chapter = await fetchChapter('1', '1')
+const pages = paginate(chapter.text, { width: INNER_W, height: INNER_H })
 let currentPage = 0
 
-const bridge = await waitForEvenAppBridge()
+const bridge = await bridgePromise
 
 const body = new TextContainerProperty({
   xPosition: 0,

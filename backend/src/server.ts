@@ -7,6 +7,17 @@ import { novelsRouter } from "./routes/novels.js";
 const app = express();
 app.use(express.json());
 
+// Single-user personal tool served to a WebView with an origin we don't
+// control (Even Hub's companion app / local dev on a different Vite port) -
+// a permissive CORS policy is the right tradeoff here, not a security gap.
+app.use((_req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  next();
+});
+app.options("*", (_req, res) => res.sendStatus(204));
+
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
