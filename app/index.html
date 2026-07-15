@@ -7,17 +7,19 @@
     <style>
       html, body {
         margin: 0;
-        height: 100%;
+        min-height: 100%;
         /* ER brand dark-theme surface (#232323) + Neutral-200 text (#E5E5E5). */
         background: #232323;
         color: #E5E5E5;
         font: 14px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-        /* Kill WebView zoom + iOS auto-sizing + rubber-band scroll. */
+        /* Kill WebView zoom + iOS auto-sizing, but keep normal vertical
+           scroll - the companion form below the glasses mirror is taller
+           than one screen and needs to scroll above the on-screen keyboard. */
         touch-action: manipulation;
         -webkit-text-size-adjust: 100%;
-        overscroll-behavior: none;
+        overscroll-behavior-x: none;
       }
-      #app { display: flex; height: 100%; }
+      #app { display: flex; min-height: 100%; }
     </style>
   </head>
   <body>

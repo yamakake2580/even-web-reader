@@ -216,16 +216,17 @@ app.innerHTML = `
     <section style="margin-top:24px;padding-top:16px;border-top:1px solid #3E3E3E;display:flex;flex-direction:column;gap:12px;">
       <label style="font-size:12px;color:#919191;display:flex;flex-direction:column;gap:4px;">
         Backend URL
-        <input id="backendUrlInput" type="text" placeholder="http://192.168.x.x:8787" style="padding:8px;border-radius:6px;border:1px solid #3E3E3E;background:#1E1E1E;color:#E5E5E5;" />
+        <input id="backendUrlInput" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="http://192.168.x.x:8787" style="padding:8px;border-radius:6px;border:1px solid #3E3E3E;background:#1E1E1E;color:#E5E5E5;" />
       </label>
       <button id="backendUrlSave" style="padding:8px;border-radius:6px;border:none;background:#3E3E3E;color:#E5E5E5;cursor:pointer;">Save backend URL</button>
       <label style="font-size:12px;color:#919191;display:flex;flex-direction:column;gap:4px;">
         Add novel by Hameln URL
-        <input id="novelUrlInput" type="text" placeholder="https://syosetu.org/novel/1/" style="padding:8px;border-radius:6px;border:1px solid #3E3E3E;background:#1E1E1E;color:#E5E5E5;" />
+        <input id="novelUrlInput" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://syosetu.org/novel/1/" style="padding:8px;border-radius:6px;border:1px solid #3E3E3E;background:#1E1E1E;color:#E5E5E5;" />
       </label>
       <button id="novelUrlAdd" style="padding:8px;border-radius:6px;border:none;background:#3E3E3E;color:#E5E5E5;cursor:pointer;">Add novel</button>
       <span id="companionStatus" style="font-size:12px;color:#919191;"></span>
     </section>
+    <div style="height:40vh;"></div>
   </main>
 `
 
