@@ -5,12 +5,15 @@ import {
   OsEventTypeList,
   type EvenHubEvent,
 } from '@evenrealities/even_hub_sdk'
+import { registerNovel } from './api'
 import { loadBookshelf, selectedNovel, type BookshelfState } from './screens/bookshelf'
 import { loadChapterList, selectedChapter, type ChapterListState } from './screens/chapterList'
 import { loadReader, showReaderPage, pagerLabel, type ReaderState } from './screens/reader'
 import type { PageSpec } from './screens/types'
+import { getStorage, initStorage, setStorage } from './storage'
 
 const bridge = await waitForEvenAppBridge()
+await initStorage(bridge)
 
 type Screen =
   | { name: 'bookshelf'; state: BookshelfState }
@@ -132,8 +135,49 @@ app.innerHTML = `
     <footer style="font-size:12px;color:#7B7B7B;text-align:center;margin-top:16px;">
       Tap glasses: select / next page · swipe up: previous · double-tap: back
     </footer>
+    <section style="margin-top:24px;padding-top:16px;border-top:1px solid #3E3E3E;display:flex;flex-direction:column;gap:12px;">
+      <label style="font-size:12px;color:#919191;display:flex;flex-direction:column;gap:4px;">
+        Backend URL
+        <input id="backendUrlInput" type="text" placeholder="http://192.168.x.x:8787" style="padding:8px;border-radius:6px;border:1px solid #3E3E3E;background:#1E1E1E;color:#E5E5E5;" />
+      </label>
+      <button id="backendUrlSave" style="padding:8px;border-radius:6px;border:none;background:#3E3E3E;color:#E5E5E5;cursor:pointer;">Save backend URL</button>
+      <label style="font-size:12px;color:#919191;display:flex;flex-direction:column;gap:4px;">
+        Add novel by Hameln URL
+        <input id="novelUrlInput" type="text" placeholder="https://syosetu.org/novel/1/" style="padding:8px;border-radius:6px;border:1px solid #3E3E3E;background:#1E1E1E;color:#E5E5E5;" />
+      </label>
+      <button id="novelUrlAdd" style="padding:8px;border-radius:6px;border:none;background:#3E3E3E;color:#E5E5E5;cursor:pointer;">Add novel</button>
+      <span id="companionStatus" style="font-size:12px;color:#919191;"></span>
+    </section>
   </main>
 `
+
+const backendUrlInput = document.getElementById('backendUrlInput') as HTMLInputElement
+const novelUrlInput = document.getElementById('novelUrlInput') as HTMLInputElement
+const companionStatus = document.getElementById('companionStatus') as HTMLSpanElement
+backendUrlInput.value = getStorage('backend_url') ?? ''
+
+document.getElementById('backendUrlSave')?.addEventListener('click', () => {
+  const value = backendUrlInput.value.trim()
+  if (!value) return
+  setStorage('backend_url', value)
+  companionStatus.textContent = 'Backend URLを保存しました'
+})
+
+document.getElementById('novelUrlAdd')?.addEventListener('click', () => {
+  const url = novelUrlInput.value.trim()
+  if (!url) return
+  companionStatus.textContent = '登録中...'
+  registerNovel(url)
+    .then((novel) => {
+      companionStatus.textContent = `登録しました: ${novel.title}`
+      novelUrlInput.value = ''
+      if (screen?.name === 'bookshelf') return goToBookshelf()
+    })
+    .catch((err) => {
+      console.error(err)
+      companionStatus.textContent = '登録に失敗しました'
+    })
+})
 
 function mirrorCompanion(): void {
   const title = document.getElementById('screenTitle')

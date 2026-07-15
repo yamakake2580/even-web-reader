@@ -1,9 +1,9 @@
+import { getStorage } from './storage'
+
 const DEFAULT_BACKEND_URL = 'http://localhost:8787'
 
-// TODO(milestone 11): read/write this via bridge.getLocalStorage/setLocalStorage
-// once the companion "backend URL" settings screen exists.
 function getBackendUrl(): string {
-  return DEFAULT_BACKEND_URL
+  return getStorage('backend_url') || DEFAULT_BACKEND_URL
 }
 
 async function getJson<T>(path: string): Promise<T> {
