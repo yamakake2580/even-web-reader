@@ -72,8 +72,13 @@ novelsRouter.get("/:id/chapters/:episode", async (req, res) => {
   }
 
   try {
+    // A cached entry with empty text is not a real cache hit - it means an
+    // earlier fetch got a non-chapter page (most likely a Cloudflare
+    // challenge page instead of the real one, since #honbun then does not
+    // exist) and that failure got stored as if it had succeeded. Treat it
+    // as a miss so it retries instead of being served forever.
     const cached = await store.loadChapter(id, episode);
-    if (cached) {
+    if (cached && cached.text.length > 0) {
       res.json(cached);
       return;
     }
@@ -92,6 +97,11 @@ novelsRouter.get("/:id/chapters/:episode", async (req, res) => {
     const html = await fetchHtml(adapter.chapterUrl(id, episode));
     const parsed = adapter.parseChapter(html);
     const text = cleanChapterHtml(parsed.bodyHtml);
+    if (text.length === 0) {
+      console.error(`empty chapter body for novel ${id} episode ${episode}, fetched html length ${html.length}`);
+      res.status(502).json({ error: "fetched chapter appears empty, try again" });
+      return;
+    }
     const chapterMeta = novel.chapters.find((c) => c.episode === episode);
     const chapter: store.StoredChapter = { title: chapterMeta?.title ?? parsed.title, text };
     await store.saveChapter(id, episode, chapter);
