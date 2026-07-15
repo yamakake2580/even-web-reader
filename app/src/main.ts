@@ -8,7 +8,7 @@ import {
 } from '@evenrealities/even_hub_sdk'
 import { registerNovel } from './api'
 import { loadBookshelf, selectedNovel, type BookshelfState } from './screens/bookshelf'
-import { loadChapterList, selectedChapter, type ChapterListState } from './screens/chapterList'
+import { LAST_READ_MARKER, loadChapterList, selectedChapter, type ChapterListState } from './screens/chapterList'
 import { loadReader, showReaderPage, pagerLabel, type ReaderState } from './screens/reader'
 import type { PageSpec } from './screens/types'
 import { getReadingPosition, getStorage, initStorage, setReadingPosition, setStorage } from './storage'
@@ -84,7 +84,9 @@ async function goToBookshelf(): Promise<void> {
 
 async function goToChapterList(novelId: string): Promise<void> {
   try {
-    const { state, spec } = await loadChapterList(novelId)
+    const saved = getReadingPosition()
+    const lastReadEpisode = saved && saved.novelId === novelId ? saved.episode : undefined
+    const { state, spec } = await loadChapterList(novelId, lastReadEpisode)
     screen = { name: 'chapterList', state }
     lastError = null
     await present(spec)
@@ -281,9 +283,14 @@ function mirrorCompanion(): void {
     count.textContent = `${screen.state.novels.length} 冊`
     mirror.innerHTML = listHtml(screen.state.novels.map((n) => n.title))
   } else if (screen.name === 'chapterList') {
-    title.textContent = screen.state.novelTitle
-    count.textContent = `${screen.state.chapters.length} 話`
-    mirror.innerHTML = listHtml(screen.state.chapters.map((c) => c.title))
+    const chapterListState = screen.state
+    title.textContent = chapterListState.novelTitle
+    count.textContent = `${chapterListState.chapters.length} 話`
+    mirror.innerHTML = listHtml(
+      chapterListState.chapters.map((c) =>
+        c.episode === chapterListState.lastReadEpisode ? `${LAST_READ_MARKER}${c.title}` : c.title,
+      ),
+    )
   } else {
     title.textContent = screen.state.title
     count.textContent = `${screen.state.currentPage + 1} / ${screen.state.pages.length}`

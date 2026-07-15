@@ -6,11 +6,34 @@ export interface ChapterListState {
   novelId: string
   novelTitle: string
   chapters: ChapterMeta[]
+  lastReadEpisode?: string
 }
 
-export async function loadChapterList(novelId: string): Promise<{ state: ChapterListState; spec: PageSpec }> {
+// The SDK's list container has no field to set an initial selected/focused
+// index or scroll offset - itemName is the only per-item content it
+// accepts, and the cursor always starts at item 0. With a long chapter list,
+// landing back on chapter 1 every time you back out of the reader means
+// scrolling all the way down again to find your place. Rotating the list so
+// the last-read chapter is item 0 fixes that with no SDK support needed -
+// it's simply always the first thing you see, no scrolling required.
+export const LAST_READ_MARKER = '▶ '
+
+function rotateToStart<T>(items: T[], startIndex: number): T[] {
+  if (startIndex <= 0) return items
+  return [...items.slice(startIndex), ...items.slice(0, startIndex)]
+}
+
+export async function loadChapterList(
+  novelId: string,
+  lastReadEpisode?: string,
+): Promise<{ state: ChapterListState; spec: PageSpec }> {
   const novel = await fetchNovel(novelId)
-  const itemName = novel.chapters.length > 0 ? novel.chapters.map((c) => c.title) : ['(話がありません)']
+  const lastReadIndex = lastReadEpisode ? novel.chapters.findIndex((c) => c.episode === lastReadEpisode) : -1
+  const chapters = lastReadIndex > 0 ? rotateToStart(novel.chapters, lastReadIndex) : novel.chapters
+  const itemName =
+    chapters.length > 0
+      ? chapters.map((c) => (c.episode === lastReadEpisode ? `${LAST_READ_MARKER}${c.title}` : c.title))
+      : ['(話がありません)']
 
   const spec: PageSpec = {
     containerTotalNum: 1,
@@ -36,7 +59,7 @@ export async function loadChapterList(novelId: string): Promise<{ state: Chapter
     ],
   }
 
-  return { state: { novelId, novelTitle: novel.title, chapters: novel.chapters }, spec }
+  return { state: { novelId, novelTitle: novel.title, chapters, lastReadEpisode }, spec }
 }
 
 export function selectedChapter(state: ChapterListState, event: List_ItemEvent): ChapterMeta | null {
