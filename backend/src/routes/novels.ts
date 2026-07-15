@@ -38,41 +38,57 @@ novelsRouter.post("/", async (req, res) => {
   }
 });
 
-novelsRouter.get("/", async (_req, res) => {
-  const novels = await store.listNovels();
-  res.json(novels.map((n) => ({ id: n.id, title: n.title, author: n.author, chapterCount: n.chapters.length })));
+novelsRouter.get("/", async (_req, res, next) => {
+  try {
+    const novels = await store.listNovels();
+    res.json(novels.map((n) => ({ id: n.id, title: n.title, author: n.author, chapterCount: n.chapters.length })));
+  } catch (err) {
+    next(err);
+  }
 });
 
-novelsRouter.get("/:id", async (req, res) => {
-  const novel = await store.loadNovel(req.params.id);
-  if (!novel) {
-    res.status(404).json({ error: "not found" });
+novelsRouter.get("/:id", async (req, res, next) => {
+  if (!store.isSafeId(req.params.id)) {
+    res.status(400).json({ error: "invalid id" });
     return;
   }
-  res.json({ id: novel.id, title: novel.title, author: novel.author, chapters: novel.chapters });
+  try {
+    const novel = await store.loadNovel(req.params.id);
+    if (!novel) {
+      res.status(404).json({ error: "not found" });
+      return;
+    }
+    res.json({ id: novel.id, title: novel.title, author: novel.author, chapters: novel.chapters });
+  } catch (err) {
+    next(err);
+  }
 });
 
 novelsRouter.get("/:id/chapters/:episode", async (req, res) => {
   const { id, episode } = req.params;
-
-  const cached = await store.loadChapter(id, episode);
-  if (cached) {
-    res.json(cached);
-    return;
-  }
-
-  const novel = await store.loadNovel(id);
-  if (!novel) {
-    res.status(404).json({ error: "novel not found" });
-    return;
-  }
-  const adapter = getAdapterByKey(novel.site);
-  if (!adapter) {
-    res.status(500).json({ error: "unknown site adapter" });
+  if (!store.isSafeId(id) || !store.isSafeId(episode)) {
+    res.status(400).json({ error: "invalid id or episode" });
     return;
   }
 
   try {
+    const cached = await store.loadChapter(id, episode);
+    if (cached) {
+      res.json(cached);
+      return;
+    }
+
+    const novel = await store.loadNovel(id);
+    if (!novel) {
+      res.status(404).json({ error: "novel not found" });
+      return;
+    }
+    const adapter = getAdapterByKey(novel.site);
+    if (!adapter) {
+      res.status(500).json({ error: "unknown site adapter" });
+      return;
+    }
+
     const html = await fetchHtml(adapter.chapterUrl(id, episode));
     const parsed = adapter.parseChapter(html);
     const text = cleanChapterHtml(parsed.bodyHtml);

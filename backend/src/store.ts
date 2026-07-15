@@ -6,6 +6,21 @@ const DATA_DIR = path.resolve(process.cwd(), "data");
 const NOVELS_DIR = path.join(DATA_DIR, "novels");
 const CHAPTERS_DIR = path.join(DATA_DIR, "chapters");
 
+// novelId/episode ultimately come from request URL segments; without this,
+// a value like ".." (a valid single path segment) could escape NOVELS_DIR /
+// CHAPTERS_DIR when joined into a filesystem path.
+const SAFE_ID = /^[A-Za-z0-9_-]+$/;
+
+export function isSafeId(value: string): boolean {
+  return SAFE_ID.test(value);
+}
+
+function assertSafeId(value: string): void {
+  if (!isSafeId(value)) {
+    throw new Error(`invalid id: ${value}`);
+  }
+}
+
 export interface StoredNovel {
   id: string;
   site: string;
@@ -34,11 +49,13 @@ async function readJson<T>(filePath: string): Promise<T | null> {
 }
 
 export async function saveNovel(novel: StoredNovel): Promise<void> {
+  assertSafeId(novel.id);
   await ensureDir(NOVELS_DIR);
   await fs.writeFile(path.join(NOVELS_DIR, `${novel.id}.json`), JSON.stringify(novel, null, 2), "utf8");
 }
 
 export async function loadNovel(id: string): Promise<StoredNovel | null> {
+  assertSafeId(id);
   return readJson<StoredNovel>(path.join(NOVELS_DIR, `${id}.json`));
 }
 
@@ -52,11 +69,15 @@ export async function listNovels(): Promise<StoredNovel[]> {
 }
 
 export async function saveChapter(novelId: string, episode: string, chapter: StoredChapter): Promise<void> {
+  assertSafeId(novelId);
+  assertSafeId(episode);
   const dir = path.join(CHAPTERS_DIR, novelId);
   await ensureDir(dir);
   await fs.writeFile(path.join(dir, `${episode}.json`), JSON.stringify(chapter, null, 2), "utf8");
 }
 
 export async function loadChapter(novelId: string, episode: string): Promise<StoredChapter | null> {
+  assertSafeId(novelId);
+  assertSafeId(episode);
   return readJson<StoredChapter>(path.join(CHAPTERS_DIR, novelId, `${episode}.json`));
 }
