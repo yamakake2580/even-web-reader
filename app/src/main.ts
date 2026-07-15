@@ -119,18 +119,24 @@ async function turnReaderPage(state: ReaderState, index: number): Promise<void> 
   mirrorCompanion()
 }
 
-function isDoubleClick(event: EvenHubEvent): boolean {
+// Real G2 hardware delivers tap/scroll events via event.sysEvent; the
+// desktop simulator delivers the same logical events via event.textEvent
+// (or event.listEvent for list screens) instead. Checking every envelope
+// for a given eventType, rather than picking just one, is the only way
+// input works identically on both - see docs/sdk-quirks.md "Quirk 2" at
+// https://github.com/aleapc/even-hub-devguide.
+function hasEventType(event: EvenHubEvent, type: OsEventTypeList): boolean {
   return (
-    event.sysEvent?.eventType === OsEventTypeList.DOUBLE_CLICK_EVENT ||
-    event.textEvent?.eventType === OsEventTypeList.DOUBLE_CLICK_EVENT ||
-    event.listEvent?.eventType === OsEventTypeList.DOUBLE_CLICK_EVENT
+    event.sysEvent?.eventType === type ||
+    event.textEvent?.eventType === type ||
+    event.listEvent?.eventType === type
   )
 }
 
-// Some devices/hosts have been observed delivering a single physical tap as
-// more than one event; a short cooldown avoids double-advancing pages or
-// double-navigating on what the user experienced as one tap.
-const EVENT_DEBOUNCE_MS = 150
+// A single physical swipe has been observed producing several rapid
+// SCROLL_TOP/SCROLL_BOTTOM dispatches; a cooldown avoids turning many pages
+// per swipe or double-navigating on what the user experienced as one tap.
+const EVENT_DEBOUNCE_MS = 300
 let lastEventAt = 0
 
 const unsubscribe = bridge.onEvenHubEvent((event) => {
@@ -140,7 +146,7 @@ const unsubscribe = bridge.onEvenHubEvent((event) => {
 
   if (!screen) return
 
-  if (isDoubleClick(event)) {
+  if (hasEventType(event, OsEventTypeList.DOUBLE_CLICK_EVENT)) {
     if (screen.name === 'bookshelf') {
       bridge.shutDownPageContainer(1)
     } else if (screen.name === 'chapterList') {
@@ -151,35 +157,39 @@ const unsubscribe = bridge.onEvenHubEvent((event) => {
     return
   }
 
-  if (screen.name === 'bookshelf' && event.listEvent?.eventType === OsEventTypeList.CLICK_EVENT) {
+  // A List_ItemEvent payload (which carries currentSelectItemIndex) is itself
+  // the selection signal - it is only ever sent for a selection, and
+  // double-click on a list already returned above, so no eventType check
+  // is needed (or reliable enough to require) here.
+  if (screen.name === 'bookshelf' && event.listEvent) {
     const novel = selectedNovel(screen.state, event.listEvent)
     if (novel) goToChapterList(novel.id).catch((err) => console.error(err))
     return
   }
 
-  if (screen.name === 'chapterList' && event.listEvent?.eventType === OsEventTypeList.CLICK_EVENT) {
+  if (screen.name === 'chapterList' && event.listEvent) {
     const chapter = selectedChapter(screen.state, event.listEvent)
     if (chapter) goToReader(screen.state.novelId, chapter.episode).catch((err) => console.error(err))
     return
   }
 
   if (screen.name === 'reader') {
-    const textType = event.textEvent?.eventType ?? null
-    const sysType = event.sysEvent?.eventType ?? null
     const readerState = screen.state
 
-    if (textType === OsEventTypeList.SCROLL_TOP_EVENT) {
+    if (hasEventType(event, OsEventTypeList.SCROLL_TOP_EVENT)) {
       turnReaderPage(readerState, readerState.currentPage - 1).catch((err) => console.error(err))
       return
     }
-    if (textType === OsEventTypeList.SCROLL_BOTTOM_EVENT || sysType === OsEventTypeList.CLICK_EVENT) {
+    if (
+      hasEventType(event, OsEventTypeList.SCROLL_BOTTOM_EVENT) ||
+      hasEventType(event, OsEventTypeList.CLICK_EVENT)
+    ) {
       turnReaderPage(readerState, readerState.currentPage + 1).catch((err) => console.error(err))
       return
     }
   }
 
-  const sysType = event.sysEvent?.eventType ?? null
-  if (sysType === OsEventTypeList.SYSTEM_EXIT_EVENT || sysType === OsEventTypeList.ABNORMAL_EXIT_EVENT) {
+  if (hasEventType(event, OsEventTypeList.SYSTEM_EXIT_EVENT) || hasEventType(event, OsEventTypeList.ABNORMAL_EXIT_EVENT)) {
     cleanup()
   }
 })
