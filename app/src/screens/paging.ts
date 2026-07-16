@@ -3,7 +3,13 @@
 // containers past some item-count/payload limit that is not documented.
 // Capping items per screen keeps every list request well under whatever
 // that limit is.
-export const LIST_PAGE_SIZE = 5
+// TEMP diagnostic: 5 items + a next-page entry (6 total) worked for the
+// very first createStartUpPageContainer call, but paging to a page with
+// both prev+next entries (7 total with 5 real items) failed at
+// rebuildPageContainer specifically. Dropping further so every page -
+// including ones with both sentinels - stays at or under what already
+// worked once.
+export const LIST_PAGE_SIZE = 3
 
 // Swipe (SCROLL_TOP/SCROLL_BOTTOM) on a list container turns out to move the
 // host's own focus cursor between the currently-rendered items rather than
