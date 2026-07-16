@@ -1,8 +1,20 @@
 import * as cheerio from "cheerio";
+import { config } from "../config.js";
 import type { CookieInput } from "../fetcher.js";
 import type { ChapterMeta, ChapterResult, NovelSiteAdapter, TocResult } from "./types.js";
 
 const HOST = "syosetu.org";
+
+// Applied to every Hameln fetch (not just favorites), so requests look like
+// the user's own logged-in session. NOTE: this does NOT unlock R18 works -
+// those live on a separate subdomain (h.syosetu.org) behind their own
+// age-confirmation gate, and fetching one anonymously returns an empty page
+// (which is how novel 390328 got registered with a blank title). Supporting
+// R18 content is a separate, larger piece of work; the empty-title guard on
+// the client side keeps such a novel from breaking the whole list.
+export function hamelnFetchOptions(): { cookies?: CookieInput[] } {
+  return config.hamelnCookie ? { cookies: parseHamelnCookieString(config.hamelnCookie) } : {};
+}
 
 function extractNovelId(url: string): string {
   const match = url.match(/\/novel\/(\d+)\//);

@@ -25,6 +25,7 @@ import {
 } from './screens/chapterList'
 import { loadReader, showReaderPage, pagerLabel, type ReaderState } from './screens/reader'
 import type { PageSpec } from './screens/types'
+import { nonEmptyLabel } from './screens/util'
 import {
   getReadingPosition,
   getStorage,
@@ -53,18 +54,8 @@ function showBridgeDebug(text: string): void {
   if (el) el.textContent = text
 }
 
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-// TEMP diagnostic: paging bookshelf/chapterList page 0 -> 1 succeeded, but
-// page 1 -> 2 (a second rebuildPageContainer call in a row) failed with the
-// same item count that just worked - suggesting the native side needs to
-// settle between rebuilds, not that the payload itself was too big. Space
-// consecutive rebuilds out and retry once after a longer pause on failure.
-let lastRebuildAt = 0
-const MIN_REBUILD_GAP_MS = 600
-
+// createStartUpPageContainer is required for an app's very first screen;
+// every screen transition after that must use rebuildPageContainer instead.
 async function present(spec: PageSpec): Promise<void> {
   try {
     if (!launched) {
@@ -72,20 +63,10 @@ async function present(spec: PageSpec): Promise<void> {
       const result = await bridge.createStartUpPageContainer(new CreateStartUpPageContainer(spec))
       showBridgeDebug(`createStartUpPageContainer -> ${result}`)
       if (result !== 0) console.error('createStartUpPageContainer failed:', result)
-      lastRebuildAt = Date.now()
     } else {
-      const sinceLast = Date.now() - lastRebuildAt
-      if (sinceLast < MIN_REBUILD_GAP_MS) await wait(MIN_REBUILD_GAP_MS - sinceLast)
-
-      let ok = await bridge.rebuildPageContainer(new RebuildPageContainer(spec))
+      const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(spec))
       showBridgeDebug(`rebuildPageContainer -> ${ok}`)
-      if (!ok) {
-        console.error('rebuildPageContainer failed, retrying once after a pause')
-        await wait(800)
-        ok = await bridge.rebuildPageContainer(new RebuildPageContainer(spec))
-        showBridgeDebug(`rebuildPageContainer (retry) -> ${ok}`)
-      }
-      lastRebuildAt = Date.now()
+      if (!ok) console.error('rebuildPageContainer failed')
     }
   } catch (err) {
     showBridgeDebug(`present() threw: ${err instanceof Error ? err.message : String(err)}`)
@@ -125,9 +106,9 @@ async function presentError(message: string): Promise<void> {
   }
 }
 
-async function goToBookshelf(page = 0): Promise<void> {
+async function goToBookshelf(): Promise<void> {
   try {
-    const { state, spec } = await loadBookshelf(page)
+    const { state, spec } = await loadBookshelf()
     screen = { name: 'bookshelf', state }
     lastError = null
     await present(spec)
@@ -138,11 +119,11 @@ async function goToBookshelf(page = 0): Promise<void> {
   mirrorCompanion()
 }
 
-async function goToChapterList(novelId: string, page = 0): Promise<void> {
+async function goToChapterList(novelId: string): Promise<void> {
   try {
     const saved = getReadingPosition()
     const lastReadEpisode = saved && saved.novelId === novelId ? saved.episode : undefined
-    const { state, spec } = await loadChapterList(novelId, lastReadEpisode, page)
+    const { state, spec } = await loadChapterList(novelId, lastReadEpisode)
     screen = { name: 'chapterList', state }
     lastError = null
     await present(spec)
@@ -198,13 +179,6 @@ const EVENT_DEBOUNCE_MS = 300
 let lastEventAt = 0
 
 const unsubscribe = bridge.onEvenHubEvent((event) => {
-  // TEMP: showing exactly what arrives, to diagnose swipe-to-page-through
-  // not working on the bookshelf/chapterList screens without needing
-  // Safari Web Inspector (not available this session).
-  showBridgeDebug(
-    `event sys:${event.sysEvent?.eventType ?? '-'} text:${event.textEvent?.eventType ?? '-'} list:${event.listEvent?.eventType ?? '-'}(idx:${event.listEvent?.currentSelectItemIndex ?? '-'})`,
-  )
-
   const now = Date.now()
   if (now - lastEventAt < EVENT_DEBOUNCE_MS) return
   lastEventAt = now
@@ -225,33 +199,17 @@ const unsubscribe = bridge.onEvenHubEvent((event) => {
   // A List_ItemEvent payload (which carries currentSelectItemIndex) is itself
   // the selection signal - it is only ever sent for a selection, and
   // double-click on a list already returned above, so no eventType check
-  // is needed (or reliable enough to require) here.
-  //
-  // Paging: swiping on a list container turns out to move the host's own
-  // focus cursor between the currently-rendered items instead of reaching
-  // our event handler as a page-change signal (confirmed on real hardware -
-  // focus moves within the visible items, then does nothing past the last
-  // one). So "prev/next page" are ordinary selectable list entries instead
-  // (see screens/paging.ts) - tapping one is a ordinary selection event,
-  // handled here like any other item.
+  // is needed (or reliable enough to require) here. The list scrolls
+  // natively on the glasses; we only get an event when an item is chosen.
   if (screen.name === 'bookshelf' && event.listEvent) {
-    const selection = selectedNovel(screen.state, event.listEvent)
-    if (selection?.kind === 'item') goToChapterList(selection.value.id).catch((err) => console.error(err))
-    else if (selection?.kind === 'prevPage') goToBookshelf(screen.state.page - 1).catch((err) => console.error(err))
-    else if (selection?.kind === 'nextPage') goToBookshelf(screen.state.page + 1).catch((err) => console.error(err))
+    const novel = selectedNovel(screen.state, event.listEvent)
+    if (novel) goToChapterList(novel.id).catch((err) => console.error(err))
     return
   }
 
   if (screen.name === 'chapterList' && event.listEvent) {
-    const chapterListState = screen.state
-    const selection = selectedChapter(chapterListState, event.listEvent)
-    if (selection?.kind === 'item') {
-      goToReader(chapterListState.novelId, selection.value.episode).catch((err) => console.error(err))
-    } else if (selection?.kind === 'prevPage') {
-      goToChapterList(chapterListState.novelId, chapterListState.page - 1).catch((err) => console.error(err))
-    } else if (selection?.kind === 'nextPage') {
-      goToChapterList(chapterListState.novelId, chapterListState.page + 1).catch((err) => console.error(err))
-    }
+    const chapter = selectedChapter(screen.state, event.listEvent)
+    if (chapter) goToReader(screen.state.novelId, chapter.episode).catch((err) => console.error(err))
     return
   }
 
@@ -470,7 +428,7 @@ async function downloadChapters(
 
 async function refreshChapterListIfShowing(novelId: string): Promise<void> {
   if (screen?.name === 'chapterList' && screen.state.novelId === novelId) {
-    await goToChapterList(novelId, screen.state.page)
+    await goToChapterList(novelId)
   }
 }
 
@@ -511,7 +469,7 @@ async function loadNovelPicker(): Promise<void> {
         .map(
           (n, i) => `
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #3E3E3E;">
-          <span style="font-size:13px;">${escapeHtml(n.title)}</span>
+          <span style="font-size:13px;">${escapeHtml(nonEmptyLabel(n.title))}</span>
           <button data-novel-index="${i}" style="padding:4px 8px;border-radius:6px;border:none;background:#3E3E3E;color:#E5E5E5;cursor:pointer;flex-shrink:0;">話数を見る</button>
         </div>`,
         )
@@ -598,7 +556,7 @@ function mirrorCompanion(): void {
   if (screen.name === 'bookshelf') {
     title.textContent = '本棚'
     count.textContent = `${screen.state.novels.length} 冊`
-    mirror.innerHTML = listHtml(screen.state.novels.map((n) => n.title))
+    mirror.innerHTML = listHtml(screen.state.novels.map((n) => nonEmptyLabel(n.title)))
   } else if (screen.name === 'chapterList') {
     const chapterListState = screen.state
     title.textContent = chapterListState.novelTitle

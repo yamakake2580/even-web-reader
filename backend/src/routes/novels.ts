@@ -1,14 +1,19 @@
 import { Router } from "express";
 import { cleanChapterHtml } from "../clean.js";
-import { fetchHtml } from "../fetcher.js";
+import { fetchHtml, type CookieInput } from "../fetcher.js";
+import { hamelnFetchOptions } from "../sites/hameln.js";
 import { getAdapterByKey, resolveAdapterForUrl } from "../sites/index.js";
 import type { NovelSiteAdapter } from "../sites/types.js";
 import * as store from "../store.js";
 
 export const novelsRouter = Router();
 
+function fetchOptionsFor(adapter: NovelSiteAdapter): { cookies?: CookieInput[] } {
+  return adapter.key === "hameln" ? hamelnFetchOptions() : {};
+}
+
 export async function registerNovel(novelId: string, adapter: NovelSiteAdapter): Promise<store.StoredNovel> {
-  const html = await fetchHtml(adapter.tocUrl(novelId));
+  const html = await fetchHtml(adapter.tocUrl(novelId), fetchOptionsFor(adapter));
   const toc = adapter.parseToc(html);
   const novel: store.StoredNovel = {
     id: novelId,
@@ -100,7 +105,7 @@ novelsRouter.get("/:id/chapters/:episode", async (req, res) => {
       return;
     }
 
-    const html = await fetchHtml(adapter.chapterUrl(id, episode));
+    const html = await fetchHtml(adapter.chapterUrl(id, episode), fetchOptionsFor(adapter));
     const parsed = adapter.parseChapter(html);
     const text = cleanChapterHtml(parsed.bodyHtml);
     if (text.length === 0) {
