@@ -31,6 +31,16 @@ function rotateToStart<T>(items: T[], startIndex: number): T[] {
   return [...items.slice(startIndex), ...items.slice(0, startIndex)]
 }
 
+// The label (including markers + episode prefix) drives both rendering and,
+// via its length, the page boundaries - so loadChapterList and
+// selectedChapter must build it identically or selection maps to the wrong
+// chapter. Keep it here, derived only from state that both have.
+function chapterLabel(c: ChapterMeta, lastReadEpisode: string | undefined, downloadedEpisodes: Set<string>): string {
+  const marker =
+    (c.episode === lastReadEpisode ? LAST_READ_MARKER : '') + (downloadedEpisodes.has(c.episode) ? DOWNLOADED_MARKER : '')
+  return nonEmptyLabel(`${marker}${c.episode}. ${c.title}`)
+}
+
 export async function loadChapterList(
   novelId: string,
   lastReadEpisode?: string,
@@ -43,20 +53,12 @@ export async function loadChapterList(
   const downloaded = await Promise.all(chapters.map((c) => isChapterSavedOffline(novelId, c.episode)))
   const downloadedEpisodes = new Set(chapters.filter((_, i) => downloaded[i]).map((c) => c.episode))
 
-  // Paginated for the glasses list container only (item-count cap - see
+  // Paginated for the glasses list container only (total-text cap - see
   // paging.ts). The full `chapters` array is kept in state for the phone-side
   // UI and download-all, which have no such limit.
-  const paginated = paginateItems(chapters, page)
-  const itemName = buildPagedItemNames(
-    paginated,
-    (c) => {
-      const marker =
-        (c.episode === lastReadEpisode ? LAST_READ_MARKER : '') +
-        (downloadedEpisodes.has(c.episode) ? DOWNLOADED_MARKER : '')
-      return nonEmptyLabel(`${marker}${c.episode}. ${c.title}`)
-    },
-    '(話がありません)',
-  )
+  const labelFor = (c: ChapterMeta) => chapterLabel(c, lastReadEpisode, downloadedEpisodes)
+  const paginated = paginateItems(chapters, page, labelFor)
+  const itemName = buildPagedItemNames(paginated, labelFor, '(話がありません)')
 
   const spec: PageSpec = {
     containerTotalNum: 1,
@@ -97,7 +99,8 @@ export async function loadChapterList(
 }
 
 export function selectedChapter(state: ChapterListState, event: List_ItemEvent): PagedSelection<ChapterMeta> | null {
-  const paginated = paginateItems(state.chapters, state.page)
+  const labelFor = (c: ChapterMeta) => chapterLabel(c, state.lastReadEpisode, state.downloadedEpisodes)
+  const paginated = paginateItems(state.chapters, state.page, labelFor)
   // Same index-0 quirk as bookshelf.ts's selectedNovel - see comment there.
   return resolvePagedSelection(paginated, event.currentSelectItemIndex ?? 0)
 }

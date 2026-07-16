@@ -10,10 +10,12 @@ export interface BookshelfState {
   totalPages: number
 }
 
+const novelLabel = (n: NovelSummary): string => nonEmptyLabel(n.title)
+
 export async function loadBookshelf(page = 0): Promise<{ state: BookshelfState; spec: PageSpec }> {
   const novels = await fetchNovels()
-  const paginated = paginateItems(novels, page)
-  const itemName = buildPagedItemNames(paginated, (n) => nonEmptyLabel(n.title), '(登録済みの小説がありません)')
+  const paginated = paginateItems(novels, page, novelLabel)
+  const itemName = buildPagedItemNames(paginated, novelLabel, '(登録済みの小説がありません)')
 
   const spec: PageSpec = {
     containerTotalNum: 1,
@@ -43,7 +45,7 @@ export async function loadBookshelf(page = 0): Promise<{ state: BookshelfState; 
 }
 
 export function selectedNovel(state: BookshelfState, event: List_ItemEvent): PagedSelection<NovelSummary> | null {
-  const paginated = paginateItems(state.novels, state.page)
+  const paginated = paginateItems(state.novels, state.page, novelLabel)
   // Known quirk: selecting the first item can arrive without
   // currentSelectItemIndex set at all, so default to index 0 rather than
   // dropping the event.
