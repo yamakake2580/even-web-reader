@@ -53,7 +53,10 @@ export async function loadChapterList(
       ? pageItems.map((c) => {
           const marker =
             (c.episode === lastReadEpisode ? LAST_READ_MARKER : '') + (downloadedEpisodes.has(c.episode) ? DOWNLOADED_MARKER : '')
-          return `${marker}${c.title}`
+          // Some chapter titles (prologue/epilogue/etc.) carry no number of
+          // their own, making position in a long list hard to track -
+          // prefix the site's own episode number for every chapter.
+          return `${marker}${c.episode}. ${c.title}`
         })
       : ['(話がありません)']
 

@@ -531,7 +531,7 @@ async function loadPhoneChapterList(novelId: string): Promise<void> {
         .map(
           (c, i) => `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;">
           <input type="checkbox" data-episode="${escapeHtml(c.episode)}" />
-          <span>${escapeHtml(`${downloaded[i] ? DOWNLOADED_MARKER : ''}${c.title}`)}</span>
+          <span>${escapeHtml(`${downloaded[i] ? DOWNLOADED_MARKER : ''}${c.episode}. ${c.title}`)}</span>
         </label>`,
         )
         .join('')
@@ -598,7 +598,7 @@ function mirrorCompanion(): void {
           (chapterListState.downloadedEpisodes.has(c.episode) ? DOWNLOADED_MARKER : '')
         return `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;">
           <input type="checkbox" data-episode="${escapeHtml(c.episode)}" />
-          <span>${escapeHtml(`${marker}${c.title}`)}</span>
+          <span>${escapeHtml(`${marker}${c.episode}. ${c.title}`)}</span>
         </label>`
       })
       .join('')
