@@ -106,9 +106,9 @@ async function presentError(message: string): Promise<void> {
   }
 }
 
-async function goToBookshelf(): Promise<void> {
+async function goToBookshelf(page = 0): Promise<void> {
   try {
-    const { state, spec } = await loadBookshelf()
+    const { state, spec } = await loadBookshelf(page)
     screen = { name: 'bookshelf', state }
     lastError = null
     await present(spec)
@@ -119,11 +119,11 @@ async function goToBookshelf(): Promise<void> {
   mirrorCompanion()
 }
 
-async function goToChapterList(novelId: string): Promise<void> {
+async function goToChapterList(novelId: string, page = 0): Promise<void> {
   try {
     const saved = getReadingPosition()
     const lastReadEpisode = saved && saved.novelId === novelId ? saved.episode : undefined
-    const { state, spec } = await loadChapterList(novelId, lastReadEpisode)
+    const { state, spec } = await loadChapterList(novelId, lastReadEpisode, page)
     screen = { name: 'chapterList', state }
     lastError = null
     await present(spec)
@@ -200,16 +200,26 @@ const unsubscribe = bridge.onEvenHubEvent((event) => {
   // the selection signal - it is only ever sent for a selection, and
   // double-click on a list already returned above, so no eventType check
   // is needed (or reliable enough to require) here. The list scrolls
-  // natively on the glasses; we only get an event when an item is chosen.
+  // natively on the glasses within a page; prev/next page are extra
+  // selectable entries (see screens/paging.ts) for going beyond the cap.
   if (screen.name === 'bookshelf' && event.listEvent) {
-    const novel = selectedNovel(screen.state, event.listEvent)
-    if (novel) goToChapterList(novel.id).catch((err) => console.error(err))
+    const selection = selectedNovel(screen.state, event.listEvent)
+    if (selection?.kind === 'item') goToChapterList(selection.value.id).catch((err) => console.error(err))
+    else if (selection?.kind === 'prevPage') goToBookshelf(screen.state.page - 1).catch((err) => console.error(err))
+    else if (selection?.kind === 'nextPage') goToBookshelf(screen.state.page + 1).catch((err) => console.error(err))
     return
   }
 
   if (screen.name === 'chapterList' && event.listEvent) {
-    const chapter = selectedChapter(screen.state, event.listEvent)
-    if (chapter) goToReader(screen.state.novelId, chapter.episode).catch((err) => console.error(err))
+    const chapterListState = screen.state
+    const selection = selectedChapter(chapterListState, event.listEvent)
+    if (selection?.kind === 'item') {
+      goToReader(chapterListState.novelId, selection.value.episode).catch((err) => console.error(err))
+    } else if (selection?.kind === 'prevPage') {
+      goToChapterList(chapterListState.novelId, chapterListState.page - 1).catch((err) => console.error(err))
+    } else if (selection?.kind === 'nextPage') {
+      goToChapterList(chapterListState.novelId, chapterListState.page + 1).catch((err) => console.error(err))
+    }
     return
   }
 
@@ -428,7 +438,7 @@ async function downloadChapters(
 
 async function refreshChapterListIfShowing(novelId: string): Promise<void> {
   if (screen?.name === 'chapterList' && screen.state.novelId === novelId) {
-    await goToChapterList(novelId)
+    await goToChapterList(novelId, screen.state.page)
   }
 }
 
