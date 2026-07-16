@@ -1,10 +1,12 @@
 // Two independent hardware limits shape this:
 //
-// 1. A single list container renders (and scrolls natively) up to some item
-//    cap. A 16-item chapter list worked all session; a 36-item bookshelf
-//    returns createStartUpPageContainer -> 1 (invalid). So lists must be
-//    capped and paged. 12 content items + up to 2 nav entries = 14, under
-//    the 16 known-good.
+// 1. createStartUpPageContainer (the FIRST screen = the bookshelf) rejects a
+//    list past a low item cap: 13 items returned 1 (invalid) on hardware,
+//    while 6 items (5 novels + a next-page entry) rendered. The cap sits
+//    somewhere in 6..12; the earlier "16-chapter list works" was reached via
+//    rebuildPageContainer, which tolerates more than createStartUp does. To
+//    stay safely under the createStartUp cap, a page holds 5 content items
+//    (+ up to 2 nav entries = 7 max). The list scrolls natively within a page.
 //
 // 2. rebuildPageContainer to a list container that reuses the SAME
 //    containerName as the currently-shown list fails (returns false) - this
@@ -13,7 +15,7 @@
 //    So each page uses a distinct containerName (see pagedContainerName),
 //    with containerID kept fixed at 1 so the container is replaced, not
 //    accumulated.
-export const LIST_PAGE_SIZE = 12
+export const LIST_PAGE_SIZE = 5
 
 export function pagedContainerName(base: string, page: number): string {
   return `${base}_p${page}`
