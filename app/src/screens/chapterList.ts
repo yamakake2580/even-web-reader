@@ -1,6 +1,6 @@
 import { ListContainerProperty, ListItemContainerProperty, type List_ItemEvent } from '@evenrealities/even_hub_sdk'
 import { fetchNovel, type ChapterMeta } from '../api'
-import { buildPagedItemNames, paginateItems, resolvePagedSelection, type PagedSelection } from './paging'
+import { buildPagedItemNames, freshListContainerId, paginateItems, resolvePagedSelection, type PagedSelection } from './paging'
 import { isChapterSavedOffline } from '../storage'
 import type { PageSpec } from './types'
 
@@ -69,7 +69,7 @@ export async function loadChapterList(
         borderWidth: 0,
         borderColor: 5,
         paddingLength: 4,
-        containerID: 1,
+        containerID: freshListContainerId(),
         containerName: 'chapterList',
         isEventCapture: 1,
         itemContainer: new ListItemContainerProperty({
