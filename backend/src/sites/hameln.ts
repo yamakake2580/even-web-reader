@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import type { CookieInput } from "../fetcher.js";
 import type { ChapterMeta, ChapterResult, NovelSiteAdapter, TocResult } from "./types.js";
 
 const HOST = "syosetu.org";
@@ -63,3 +64,50 @@ export const hamelnAdapter: NovelSiteAdapter = {
     };
   },
 };
+
+// Favorites import: Hameln-specific, not part of the generic NovelSiteAdapter
+// interface (favorites are a per-account feature, not a per-novel one).
+// Requires a session cookie captured from the user's own real, manually
+// logged-in browser (see config.hamelnCookie / README) - this project does
+// not automate the Hameln login flow itself.
+
+export function favoritesUrl(page: number): string {
+  return `https://${HOST}/?mode=favo&page=${page}`;
+}
+
+export interface FavoritesPage {
+  novelIds: string[];
+  totalPages: number;
+}
+
+export function parseFavoritesPage(html: string): FavoritesPage {
+  const $ = cheerio.load(html);
+
+  const novelIds = new Set<string>();
+  $('a[href*="/novel/"]').each((_, el) => {
+    const href = $(el).attr("href") ?? "";
+    const match = href.match(/\/novel\/(\d+)\/$/);
+    if (match) novelIds.add(match[1]);
+  });
+
+  let totalPages = 1;
+  $('a[href*="page="]').each((_, el) => {
+    const href = $(el).attr("href") ?? "";
+    const match = href.match(/page=(\d+)/);
+    if (match) totalPages = Math.max(totalPages, Number(match[1]));
+  });
+
+  return { novelIds: [...novelIds], totalPages };
+}
+
+/** Parses a "name=value; name=value" cookie header into fetchHtml's cookie format. */
+export function parseHamelnCookieString(raw: string): CookieInput[] {
+  return raw
+    .split(";")
+    .map((pair) => pair.trim())
+    .filter(Boolean)
+    .map((pair) => {
+      const idx = pair.indexOf("=");
+      return { name: pair.slice(0, idx).trim(), value: pair.slice(idx + 1).trim(), domain: `.${HOST}` };
+    });
+}

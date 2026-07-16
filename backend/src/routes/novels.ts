@@ -1,10 +1,27 @@
 import { Router } from "express";
 import { cleanChapterHtml } from "../clean.js";
+import { config } from "../config.js";
 import { fetchHtml } from "../fetcher.js";
+import { hamelnAdapter, favoritesUrl, parseFavoritesPage, parseHamelnCookieString } from "../sites/hameln.js";
 import { getAdapterByKey, resolveAdapterForUrl } from "../sites/index.js";
+import type { NovelSiteAdapter } from "../sites/types.js";
 import * as store from "../store.js";
 
 export const novelsRouter = Router();
+
+async function registerNovel(novelId: string, adapter: NovelSiteAdapter): Promise<store.StoredNovel> {
+  const html = await fetchHtml(adapter.tocUrl(novelId));
+  const toc = adapter.parseToc(html);
+  const novel: store.StoredNovel = {
+    id: novelId,
+    site: adapter.key,
+    title: toc.title,
+    author: toc.author,
+    chapters: toc.chapters,
+  };
+  await store.saveNovel(novel);
+  return novel;
+}
 
 novelsRouter.post("/", async (req, res) => {
   const url = req.body?.url;
@@ -21,20 +38,60 @@ novelsRouter.post("/", async (req, res) => {
 
   try {
     const novelId = adapter.parseNovelId(url);
-    const html = await fetchHtml(adapter.tocUrl(novelId));
-    const toc = adapter.parseToc(html);
-    const novel: store.StoredNovel = {
-      id: novelId,
-      site: adapter.key,
-      title: toc.title,
-      author: toc.author,
-      chapters: toc.chapters,
-    };
-    await store.saveNovel(novel);
+    const novel = await registerNovel(novelId, adapter);
     res.json({ id: novel.id, title: novel.title, author: novel.author, chapterCount: novel.chapters.length });
   } catch (err) {
     console.error(err);
     res.status(502).json({ error: "failed to fetch or parse novel" });
+  }
+});
+
+// Imports every novel in the users Hameln favorites list as a bookshelf
+// entry (metadata + chapter list only - no chapter text is fetched here).
+// Reading still goes through the normal on-demand chapter endpoint, so this
+// stays as light as adding each novel by URL individually would be, just
+// automated across however many favorites pages exist. Requires
+// HAMELN_COOKIE (see config.ts / README) - a session cookie the user copies
+// from their own manually logged-in browser. This route never automates the
+// Hameln login flow itself.
+novelsRouter.post("/import-favorites", async (_req, res) => {
+  if (!config.hamelnCookie) {
+    res.status(400).json({ error: "HAMELN_COOKIE is not configured" });
+    return;
+  }
+  const cookies = parseHamelnCookieString(config.hamelnCookie);
+
+  try {
+    const novelIds = new Set<string>();
+    const first = parseFavoritesPage(await fetchHtml(favoritesUrl(1), { cookies }));
+    first.novelIds.forEach((id) => novelIds.add(id));
+    console.log(`favorites import: fetched page 1/${first.totalPages} (${novelIds.size} novels so far)`);
+
+    for (let page = 2; page <= first.totalPages; page++) {
+      const parsed = parseFavoritesPage(await fetchHtml(favoritesUrl(page), { cookies }));
+      parsed.novelIds.forEach((id) => novelIds.add(id));
+      console.log(`favorites import: fetched page ${page}/${first.totalPages} (${novelIds.size} novels so far)`);
+    }
+
+    let registered = 0;
+    let failed = 0;
+    let done = 0;
+    for (const novelId of novelIds) {
+      done++;
+      try {
+        await registerNovel(novelId, hamelnAdapter);
+        registered++;
+      } catch (err) {
+        console.error(`favorites import: failed to register novel ${novelId}`, err);
+        failed++;
+      }
+      console.log(`favorites import: registered ${done}/${novelIds.size} (novel ${novelId})`);
+    }
+
+    res.json({ totalFavorites: novelIds.size, registered, failed });
+  } catch (err) {
+    console.error(err);
+    res.status(502).json({ error: "failed to fetch favorites list" });
   }
 });
 

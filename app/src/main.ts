@@ -6,7 +6,7 @@ import {
   OsEventTypeList,
   type EvenHubEvent,
 } from '@evenrealities/even_hub_sdk'
-import { fetchChapter, registerNovel } from './api'
+import { fetchChapter, importFavorites, registerNovel } from './api'
 import { loadBookshelf, selectedNovel, type BookshelfState } from './screens/bookshelf'
 import { LAST_READ_MARKER, loadChapterList, selectedChapter, type ChapterListState } from './screens/chapterList'
 import { loadReader, showReaderPage, pagerLabel, type ReaderState } from './screens/reader'
@@ -239,6 +239,8 @@ app.innerHTML = `
       </label>
       <button id="novelUrlAdd" style="padding:8px;border-radius:6px;border:none;background:#3E3E3E;color:#E5E5E5;cursor:pointer;">Add novel</button>
       <span id="companionStatus" style="font-size:12px;color:#919191;"></span>
+      <button id="importFavoritesBtn" style="padding:8px;border-radius:6px;border:none;background:#3E3E3E;color:#E5E5E5;cursor:pointer;margin-top:8px;">ハーメルンのお気に入りを一括インポート</button>
+      <span id="importFavoritesStatus" style="font-size:12px;color:#919191;"></span>
     </section>
     <div style="height:40vh;"></div>
   </main>
@@ -279,6 +281,22 @@ document.getElementById('novelUrlAdd')?.addEventListener('click', () => {
     .catch((err) => {
       console.error(err)
       companionStatus.textContent = '登録に失敗しました'
+    })
+})
+
+document.getElementById('importFavoritesBtn')?.addEventListener('click', () => {
+  const statusEl = document.getElementById('importFavoritesStatus')
+  if (statusEl) statusEl.textContent = 'インポート中...（お気に入りの件数によっては数分かかります）'
+  importFavorites()
+    .then((result) => {
+      if (statusEl) {
+        statusEl.textContent = `完了: ${result.registered}件登録 / ${result.failed}件失敗 (お気に入り全${result.totalFavorites}件)`
+      }
+      if (screen?.name === 'bookshelf') return goToBookshelf()
+    })
+    .catch((err) => {
+      console.error(err)
+      if (statusEl) statusEl.textContent = 'インポートに失敗しました（HAMELN_COOKIEの設定を確認してください）'
     })
 })
 

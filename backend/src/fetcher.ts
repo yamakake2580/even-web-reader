@@ -44,7 +44,10 @@ async function throttle(): Promise<void> {
 // producing empty (but "successfully" cached) chapters. Poll the title until
 // it stops looking like a challenge page before reading content.
 async function waitForCloudflareChallenge(page: Page): Promise<void> {
-  const looksLikeChallenge = async () => (await page.title().catch(() => "")).includes("Just a moment");
+  const looksLikeChallenge = async () => {
+    const title = await page.title().catch(() => "");
+    return title.includes("Just a moment") || title.includes("お待ちください");
+  };
   if (!(await looksLikeChallenge())) return;
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
@@ -53,13 +56,25 @@ async function waitForCloudflareChallenge(page: Page): Promise<void> {
   }
 }
 
+export interface CookieInput {
+  name: string;
+  value: string;
+  domain: string;
+  path?: string;
+}
+
 /** Fetches a page's rendered HTML, serialized behind a politeness queue. */
-export function fetchHtml(url: string): Promise<string> {
+export function fetchHtml(url: string, options?: { cookies?: CookieInput[] }): Promise<string> {
   const result = queue.then(async () => {
     await throttle();
     const browser = await getBrowser();
     const context = await browser.newContext({ userAgent: USER_AGENT, locale: "ja-JP" });
     try {
+      if (options?.cookies?.length) {
+        await context.addCookies(
+          options.cookies.map((c) => ({ ...c, path: c.path ?? "/", secure: true, sameSite: "Lax" as const })),
+        );
+      }
       const page = await context.newPage();
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
       await waitForCloudflareChallenge(page);
