@@ -16,7 +16,13 @@ import {
   type FavoriteNovel,
 } from './api'
 import { loadBookshelf, selectedNovel, type BookshelfState } from './screens/bookshelf'
-import { LAST_READ_MARKER, loadChapterList, selectedChapter, type ChapterListState } from './screens/chapterList'
+import {
+  DOWNLOADED_MARKER,
+  LAST_READ_MARKER,
+  loadChapterList,
+  selectedChapter,
+  type ChapterListState,
+} from './screens/chapterList'
 import { loadReader, showReaderPage, pagerLabel, type ReaderState } from './screens/reader'
 import type { PageSpec } from './screens/types'
 import {
@@ -403,9 +409,18 @@ async function downloadChapters(
   }
 }
 
+async function refreshChapterListIfShowing(novelId: string): Promise<void> {
+  if (screen?.name === 'chapterList' && screen.state.novelId === novelId) {
+    await goToChapterList(novelId)
+  }
+}
+
 document.getElementById('downloadAllBtn')?.addEventListener('click', () => {
   if (!screen || screen.name !== 'chapterList') return
-  downloadChapters(screen.state.novelId, screen.state.chapters).catch((err) => console.error(err))
+  const novelId = screen.state.novelId
+  downloadChapters(novelId, screen.state.chapters)
+    .then(() => refreshChapterListIfShowing(novelId))
+    .catch((err) => console.error(err))
 })
 
 document.getElementById('downloadSelectedBtn')?.addEventListener('click', () => {
@@ -415,8 +430,11 @@ document.getElementById('downloadSelectedBtn')?.addEventListener('click', () => 
   )
   const episodes = new Set(checked.map((el) => el.dataset.episode).filter((e): e is string => !!e))
   if (episodes.size === 0) return
+  const novelId = screen.state.novelId
   const selected = screen.state.chapters.filter((c) => episodes.has(c.episode))
-  downloadChapters(screen.state.novelId, selected).catch((err) => console.error(err))
+  downloadChapters(novelId, selected)
+    .then(() => refreshChapterListIfShowing(novelId))
+    .catch((err) => console.error(err))
 })
 
 // --- Phone-only download management: browse any bookshelf novel's chapter
@@ -460,15 +478,16 @@ async function loadPhoneChapterList(novelId: string): Promise<void> {
   try {
     const detail = await fetchNovel(novelId)
     phoneChapterBrowse = { novelId, chapters: detail.chapters }
+    const downloaded = await Promise.all(detail.chapters.map((c) => isChapterSavedOffline(novelId, c.episode)))
     if (panel) panel.style.display = 'flex'
     if (titleEl) titleEl.textContent = detail.title
     if (statusEl) statusEl.textContent = ''
     if (itemsEl) {
       itemsEl.innerHTML = detail.chapters
         .map(
-          (c) => `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;">
+          (c, i) => `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;">
           <input type="checkbox" data-episode="${escapeHtml(c.episode)}" />
-          <span>${escapeHtml(c.title)}</span>
+          <span>${escapeHtml(`${downloaded[i] ? DOWNLOADED_MARKER : ''}${c.title}`)}</span>
         </label>`,
         )
         .join('')
@@ -484,9 +503,10 @@ document.getElementById('manageDownloadsBtn')?.addEventListener('click', () => {
 
 document.getElementById('phoneDownloadAllBtn')?.addEventListener('click', () => {
   if (!phoneChapterBrowse) return
-  downloadChapters(phoneChapterBrowse.novelId, phoneChapterBrowse.chapters, 'phoneDownloadStatus').catch((err) =>
-    console.error(err),
-  )
+  const novelId = phoneChapterBrowse.novelId
+  downloadChapters(novelId, phoneChapterBrowse.chapters, 'phoneDownloadStatus')
+    .then(() => loadPhoneChapterList(novelId))
+    .catch((err) => console.error(err))
 })
 
 document.getElementById('phoneDownloadSelectedBtn')?.addEventListener('click', () => {
@@ -496,8 +516,11 @@ document.getElementById('phoneDownloadSelectedBtn')?.addEventListener('click', (
   )
   const episodes = new Set(checked.map((el) => el.dataset.episode).filter((e): e is string => !!e))
   if (episodes.size === 0) return
+  const novelId = phoneChapterBrowse.novelId
   const selected = phoneChapterBrowse.chapters.filter((c) => episodes.has(c.episode))
-  downloadChapters(phoneChapterBrowse.novelId, selected, 'phoneDownloadStatus').catch((err) => console.error(err))
+  downloadChapters(novelId, selected, 'phoneDownloadStatus')
+    .then(() => loadPhoneChapterList(novelId))
+    .catch((err) => console.error(err))
 })
 
 function mirrorCompanion(): void {
@@ -526,10 +549,12 @@ function mirrorCompanion(): void {
     // of chapters instead of the whole novel.
     mirror.innerHTML = chapterListState.chapters
       .map((c) => {
-        const label = c.episode === chapterListState.lastReadEpisode ? `${LAST_READ_MARKER}${c.title}` : c.title
+        const marker =
+          (c.episode === chapterListState.lastReadEpisode ? LAST_READ_MARKER : '') +
+          (chapterListState.downloadedEpisodes.has(c.episode) ? DOWNLOADED_MARKER : '')
         return `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;">
           <input type="checkbox" data-episode="${escapeHtml(c.episode)}" />
-          <span>${escapeHtml(label)}</span>
+          <span>${escapeHtml(`${marker}${c.title}`)}</span>
         </label>`
       })
       .join('')

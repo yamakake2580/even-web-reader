@@ -1,5 +1,6 @@
 import { ListContainerProperty, ListItemContainerProperty, type List_ItemEvent } from '@evenrealities/even_hub_sdk'
 import { fetchNovel, type ChapterMeta } from '../api'
+import { isChapterSavedOffline } from '../storage'
 import type { PageSpec } from './types'
 
 export interface ChapterListState {
@@ -7,6 +8,7 @@ export interface ChapterListState {
   novelTitle: string
   chapters: ChapterMeta[]
   lastReadEpisode?: string
+  downloadedEpisodes: Set<string>
 }
 
 // The SDK's list container has no field to set an initial selected/focused
@@ -17,6 +19,10 @@ export interface ChapterListState {
 // the last-read chapter is item 0 fixes that with no SDK support needed -
 // it's simply always the first thing you see, no scrolling required.
 export const LAST_READ_MARKER = '▶ '
+// Chapters saved for offline reading (via reading them once, or the
+// download-all/download-selected buttons) get this marker so it is visible
+// on the glasses themselves which ones do not need the backend to open.
+export const DOWNLOADED_MARKER = '✓ '
 
 function rotateToStart<T>(items: T[], startIndex: number): T[] {
   if (startIndex <= 0) return items
@@ -30,9 +36,16 @@ export async function loadChapterList(
   const novel = await fetchNovel(novelId)
   const lastReadIndex = lastReadEpisode ? novel.chapters.findIndex((c) => c.episode === lastReadEpisode) : -1
   const chapters = lastReadIndex > 0 ? rotateToStart(novel.chapters, lastReadIndex) : novel.chapters
+
+  const downloaded = await Promise.all(chapters.map((c) => isChapterSavedOffline(novelId, c.episode)))
+  const downloadedEpisodes = new Set(chapters.filter((_, i) => downloaded[i]).map((c) => c.episode))
+
   const itemName =
     chapters.length > 0
-      ? chapters.map((c) => (c.episode === lastReadEpisode ? `${LAST_READ_MARKER}${c.title}` : c.title))
+      ? chapters.map((c) => {
+          const marker = (c.episode === lastReadEpisode ? LAST_READ_MARKER : '') + (downloadedEpisodes.has(c.episode) ? DOWNLOADED_MARKER : '')
+          return `${marker}${c.title}`
+        })
       : ['(話がありません)']
 
   const spec: PageSpec = {
@@ -59,7 +72,7 @@ export async function loadChapterList(
     ],
   }
 
-  return { state: { novelId, novelTitle: novel.title, chapters, lastReadEpisode }, spec }
+  return { state: { novelId, novelTitle: novel.title, chapters, lastReadEpisode, downloadedEpisodes }, spec }
 }
 
 export function selectedChapter(state: ChapterListState, event: List_ItemEvent): ChapterMeta | null {
