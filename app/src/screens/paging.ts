@@ -4,9 +4,10 @@ import { TextContainerProperty } from '@evenrealities/even_hub_sdk'
 // createStartUpPageContainer return 1 (invalid) - the host rejects list
 // containers past some item-count/payload limit that is not documented.
 // Capping items per screen and paging through them with swipe keeps every
-// list request well under whatever that limit is. 15 is a conservative
-// starting point, not a value taken from documentation.
-export const LIST_PAGE_SIZE = 15
+// list request well under whatever that limit is.
+// TEMP diagnostic: dropped way down from 15 (which still failed) to narrow
+// down whether this is a count/size limit at all, or something else.
+export const LIST_PAGE_SIZE = 5
 
 export interface Paginated<T> {
   pageItems: T[]
