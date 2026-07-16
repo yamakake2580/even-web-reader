@@ -50,13 +50,21 @@ export function buildPagedItemNames<T>(paginated: Paginated<T>, labelFor: (item:
 
 // TEMP diagnostic: page 0->1 (first rebuildPageContainer call) succeeded,
 // page 1->2 (second, with an identical item count/shape) failed even after
-// spacing the calls out and retrying. Testing whether reusing the exact
-// same containerID/containerName across repeated rebuilds is itself the
-// problem - each paged list screen now gets a fresh id.
+// spacing the calls out, retrying, and using a fresh containerID per call.
+// A working chain earlier this session (bookshelf -[rebuild]-> chapterList
+// -[rebuild]-> reader) alternates container *type* (list, then text) each
+// time; the failing chain rebuilds a *list* container twice in a row with
+// the same containerName both times. Testing containerName next.
 let nextListContainerId = 100
 export function freshListContainerId(): number {
   nextListContainerId += 1
   return nextListContainerId
+}
+
+let nextListContainerNameSuffix = 0
+export function freshListContainerName(base: string): string {
+  nextListContainerNameSuffix += 1
+  return `${base}_${nextListContainerNameSuffix}`
 }
 
 export type PagedSelection<T> = { kind: 'item'; value: T } | { kind: 'prevPage' } | { kind: 'nextPage' };

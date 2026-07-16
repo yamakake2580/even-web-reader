@@ -1,6 +1,13 @@
 import { ListContainerProperty, ListItemContainerProperty, type List_ItemEvent } from '@evenrealities/even_hub_sdk'
 import { fetchNovels, type NovelSummary } from '../api'
-import { buildPagedItemNames, freshListContainerId, paginateItems, resolvePagedSelection, type PagedSelection } from './paging'
+import {
+  buildPagedItemNames,
+  freshListContainerId,
+  freshListContainerName,
+  paginateItems,
+  resolvePagedSelection,
+  type PagedSelection,
+} from './paging'
 import type { PageSpec } from './types'
 
 export interface BookshelfState {
@@ -26,7 +33,7 @@ export async function loadBookshelf(page = 0): Promise<{ state: BookshelfState; 
         borderColor: 5,
         paddingLength: 4,
         containerID: freshListContainerId(),
-        containerName: 'bookshelf',
+        containerName: freshListContainerName('bookshelf'),
         isEventCapture: 1,
         itemContainer: new ListItemContainerProperty({
           itemCount: itemName.length,
