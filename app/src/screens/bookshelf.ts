@@ -1,6 +1,6 @@
 import { ListContainerProperty, ListItemContainerProperty, type List_ItemEvent } from '@evenrealities/even_hub_sdk'
 import { fetchNovels, type NovelSummary } from '../api'
-import { listPagerContainer, paginateItems } from './paging'
+import { paginateItems } from './paging'
 import type { PageSpec } from './types'
 
 export interface BookshelfState {
@@ -11,17 +11,21 @@ export interface BookshelfState {
 
 export async function loadBookshelf(page = 0): Promise<{ state: BookshelfState; spec: PageSpec }> {
   const novels = await fetchNovels()
+  // TEMP diagnostic: dropped the second (text) pager container - isolating
+  // whether mixing listObject+textObject in one spec is what is causing
+  // createStartUpPageContainer to fail on real hardware, now that a
+  // single-container error message is confirmed to render fine.
   const { pageItems, page: clampedPage, totalPages } = paginateItems(novels, page)
   const itemName = pageItems.length > 0 ? pageItems.map((n) => n.title) : ['(登録済みの小説がありません)']
 
   const spec: PageSpec = {
-    containerTotalNum: 2,
+    containerTotalNum: 1,
     listObject: [
       new ListContainerProperty({
         xPosition: 0,
         yPosition: 0,
         width: 576,
-        height: 250,
+        height: 288,
         borderWidth: 0,
         borderColor: 5,
         paddingLength: 4,
@@ -36,7 +40,6 @@ export async function loadBookshelf(page = 0): Promise<{ state: BookshelfState; 
         }),
       }),
     ],
-    textObject: [listPagerContainer(clampedPage, totalPages)],
   }
 
   return { state: { novels, page: clampedPage, totalPages }, spec }
