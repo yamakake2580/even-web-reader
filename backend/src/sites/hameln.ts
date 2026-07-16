@@ -75,19 +75,38 @@ export function favoritesUrl(page: number): string {
   return `https://${HOST}/?mode=favo&page=${page}`;
 }
 
+export interface FavoriteNovel {
+  id: string;
+  title: string;
+  author: string;
+}
+
 export interface FavoritesPage {
-  novelIds: string[];
+  novels: FavoriteNovel[];
   totalPages: number;
 }
 
 export function parseFavoritesPage(html: string): FavoritesPage {
   const $ = cheerio.load(html);
 
-  const novelIds = new Set<string>();
-  $('a[href*="/novel/"]').each((_, el) => {
-    const href = $(el).attr("href") ?? "";
+  const novels: FavoriteNovel[] = [];
+  const seen = new Set<string>();
+  $("h3").each((_, el) => {
+    const link = $(el).find('a[href*="/novel/"]').first();
+    const href = link.attr("href") ?? "";
     const match = href.match(/\/novel\/(\d+)\/$/);
-    if (match) novelIds.add(match[1]);
+    if (!match) return;
+    const id = match[1];
+    if (seen.has(id)) return;
+    seen.add(id);
+
+    const title = link.text().trim();
+    // Author is usually its own link (/user/{id}/) but sometimes plain text
+    // when the account has no public profile - fall back to the "作者：..." text.
+    const authorLink = $(el).find('a[href*="/user/"]').first();
+    const author = authorLink.length > 0 ? authorLink.text().trim() : ($(el).text().match(/作者：([^）]*)/)?.[1].trim() ?? "");
+
+    novels.push({ id, title, author });
   });
 
   let totalPages = 1;
@@ -97,7 +116,7 @@ export function parseFavoritesPage(html: string): FavoritesPage {
     if (match) totalPages = Math.max(totalPages, Number(match[1]));
   });
 
-  return { novelIds: [...novelIds], totalPages };
+  return { novels, totalPages };
 }
 
 /** Parses a "name=value; name=value" cookie header into fetchHtml's cookie format. */

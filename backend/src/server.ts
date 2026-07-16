@@ -2,6 +2,7 @@ import express, { type ErrorRequestHandler } from "express";
 import { requireAuth } from "./auth.js";
 import { config } from "./config.js";
 import { shutdownFetcher } from "./fetcher.js";
+import { favoritesRouter } from "./routes/favorites.js";
 import { novelsRouter } from "./routes/novels.js";
 
 const app = express();
@@ -23,6 +24,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/novels", requireAuth, novelsRouter);
+app.use("/favorites", requireAuth, favoritesRouter);
 
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   console.error(err);

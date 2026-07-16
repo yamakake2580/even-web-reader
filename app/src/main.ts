@@ -102,9 +102,9 @@ async function presentError(message: string): Promise<void> {
   }
 }
 
-async function goToBookshelf(): Promise<void> {
+async function goToBookshelf(page = 0): Promise<void> {
   try {
-    const { state, spec } = await loadBookshelf()
+    const { state, spec } = await loadBookshelf(page)
     screen = { name: 'bookshelf', state }
     lastError = null
     await present(spec)
@@ -115,11 +115,11 @@ async function goToBookshelf(): Promise<void> {
   mirrorCompanion()
 }
 
-async function goToChapterList(novelId: string): Promise<void> {
+async function goToChapterList(novelId: string, page = 0): Promise<void> {
   try {
     const saved = getReadingPosition()
     const lastReadEpisode = saved && saved.novelId === novelId ? saved.episode : undefined
-    const { state, spec } = await loadChapterList(novelId, lastReadEpisode)
+    const { state, spec } = await loadChapterList(novelId, lastReadEpisode, page)
     screen = { name: 'chapterList', state }
     lastError = null
     await present(spec)
@@ -190,6 +190,31 @@ const unsubscribe = bridge.onEvenHubEvent((event) => {
       goToChapterList(screen.state.novelId).catch((err) => console.error(err))
     }
     return
+  }
+
+  // Swipe pages through a capped list (see screens/paging.ts) before falling
+  // through to selection handling below.
+  if (screen.name === 'bookshelf') {
+    const { page, totalPages } = screen.state
+    if (hasEventType(event, OsEventTypeList.SCROLL_TOP_EVENT)) {
+      if (page > 0) goToBookshelf(page - 1).catch((err) => console.error(err))
+      return
+    }
+    if (hasEventType(event, OsEventTypeList.SCROLL_BOTTOM_EVENT)) {
+      if (page < totalPages - 1) goToBookshelf(page + 1).catch((err) => console.error(err))
+      return
+    }
+  }
+  if (screen.name === 'chapterList') {
+    const { novelId, page, totalPages } = screen.state
+    if (hasEventType(event, OsEventTypeList.SCROLL_TOP_EVENT)) {
+      if (page > 0) goToChapterList(novelId, page - 1).catch((err) => console.error(err))
+      return
+    }
+    if (hasEventType(event, OsEventTypeList.SCROLL_BOTTOM_EVENT)) {
+      if (page < totalPages - 1) goToChapterList(novelId, page + 1).catch((err) => console.error(err))
+      return
+    }
   }
 
   // A List_ItemEvent payload (which carries currentSelectItemIndex) is itself
@@ -423,7 +448,7 @@ async function downloadChapters(
 
 async function refreshChapterListIfShowing(novelId: string): Promise<void> {
   if (screen?.name === 'chapterList' && screen.state.novelId === novelId) {
-    await goToChapterList(novelId)
+    await goToChapterList(novelId, screen.state.page)
   }
 }
 

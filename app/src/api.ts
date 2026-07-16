@@ -58,17 +58,18 @@ export async function registerNovel(url: string): Promise<NovelSummary> {
   return res.json()
 }
 
-export interface ImportFavoritesResult {
-  totalFavorites: number
-  registered: number
-  failed: number
+export interface FavoriteNovel {
+  id: string
+  title: string
+  author: string
 }
 
-// Can take a long time (one request per favorites page, plus one per novel) -
-// callers should show an indeterminate "in progress" state, not a spinner
-// with a timeout.
-export async function importFavorites(): Promise<ImportFavoritesResult> {
-  const res = await fetch(`${getBackendUrl()}/novels/import-favorites`, { method: 'POST' })
-  if (!res.ok) throw new Error(`POST /novels/import-favorites failed: ${res.status}`)
-  return res.json()
+export interface FavoritesPage {
+  page: number
+  totalPages: number
+  novels: FavoriteNovel[]
+}
+
+export function fetchFavoritesPage(page: number): Promise<FavoritesPage> {
+  return getJson(`/favorites?page=${page}`)
 }

@@ -1,5 +1,6 @@
 import { ListContainerProperty, ListItemContainerProperty, type List_ItemEvent } from '@evenrealities/even_hub_sdk'
 import { fetchNovel, type ChapterMeta } from '../api'
+import { listPagerContainer, paginateItems } from './paging'
 import { isChapterSavedOffline } from '../storage'
 import type { PageSpec } from './types'
 
@@ -9,6 +10,8 @@ export interface ChapterListState {
   chapters: ChapterMeta[]
   lastReadEpisode?: string
   downloadedEpisodes: Set<string>
+  page: number
+  totalPages: number
 }
 
 // The SDK's list container has no field to set an initial selected/focused
@@ -32,6 +35,7 @@ function rotateToStart<T>(items: T[], startIndex: number): T[] {
 export async function loadChapterList(
   novelId: string,
   lastReadEpisode?: string,
+  page = 0,
 ): Promise<{ state: ChapterListState; spec: PageSpec }> {
   const novel = await fetchNovel(novelId)
   const lastReadIndex = lastReadEpisode ? novel.chapters.findIndex((c) => c.episode === lastReadEpisode) : -1
@@ -40,22 +44,27 @@ export async function loadChapterList(
   const downloaded = await Promise.all(chapters.map((c) => isChapterSavedOffline(novelId, c.episode)))
   const downloadedEpisodes = new Set(chapters.filter((_, i) => downloaded[i]).map((c) => c.episode))
 
+  // Paginated for the glasses list container only (payload/item-count limit -
+  // see paging.ts). The full `chapters` array is kept in state for the
+  // phone-side UI and download-all, which have no such limit.
+  const { pageItems, page: clampedPage, totalPages } = paginateItems(chapters, page)
   const itemName =
-    chapters.length > 0
-      ? chapters.map((c) => {
-          const marker = (c.episode === lastReadEpisode ? LAST_READ_MARKER : '') + (downloadedEpisodes.has(c.episode) ? DOWNLOADED_MARKER : '')
+    pageItems.length > 0
+      ? pageItems.map((c) => {
+          const marker =
+            (c.episode === lastReadEpisode ? LAST_READ_MARKER : '') + (downloadedEpisodes.has(c.episode) ? DOWNLOADED_MARKER : '')
           return `${marker}${c.title}`
         })
       : ['(話がありません)']
 
   const spec: PageSpec = {
-    containerTotalNum: 1,
+    containerTotalNum: 2,
     listObject: [
       new ListContainerProperty({
         xPosition: 0,
         yPosition: 0,
         width: 576,
-        height: 288,
+        height: 250,
         borderWidth: 0,
         borderColor: 5,
         paddingLength: 4,
@@ -70,13 +79,18 @@ export async function loadChapterList(
         }),
       }),
     ],
+    textObject: [listPagerContainer(clampedPage, totalPages)],
   }
 
-  return { state: { novelId, novelTitle: novel.title, chapters, lastReadEpisode, downloadedEpisodes }, spec }
+  return {
+    state: { novelId, novelTitle: novel.title, chapters, lastReadEpisode, downloadedEpisodes, page: clampedPage, totalPages },
+    spec,
+  }
 }
 
 export function selectedChapter(state: ChapterListState, event: List_ItemEvent): ChapterMeta | null {
-  if (state.chapters.length === 0) return null
+  const { pageItems } = paginateItems(state.chapters, state.page)
+  if (pageItems.length === 0) return null
   // Same index-0 quirk as bookshelf.ts's selectedNovel - see comment there.
-  return state.chapters[event.currentSelectItemIndex ?? 0] ?? null
+  return pageItems[event.currentSelectItemIndex ?? 0] ?? null
 }
