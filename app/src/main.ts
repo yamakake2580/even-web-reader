@@ -48,14 +48,25 @@ let screen: Screen | null = null
 // createStartUpPageContainer is required for an app's very first screen;
 // every screen transition after that must use rebuildPageContainer instead.
 let launched = false
+function showBridgeDebug(text: string): void {
+  const el = document.getElementById('bridgeDebug')
+  if (el) el.textContent = text
+}
 async function present(spec: PageSpec): Promise<void> {
-  if (!launched) {
-    launched = true
-    const result = await bridge.createStartUpPageContainer(new CreateStartUpPageContainer(spec))
-    if (result !== 0) console.error('createStartUpPageContainer failed:', result)
-  } else {
-    const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(spec))
-    if (!ok) console.error('rebuildPageContainer failed')
+  try {
+    if (!launched) {
+      launched = true
+      const result = await bridge.createStartUpPageContainer(new CreateStartUpPageContainer(spec))
+      showBridgeDebug(`createStartUpPageContainer -> ${result}`)
+      if (result !== 0) console.error('createStartUpPageContainer failed:', result)
+    } else {
+      const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(spec))
+      showBridgeDebug(`rebuildPageContainer -> ${ok}`)
+      if (!ok) console.error('rebuildPageContainer failed')
+    }
+  } catch (err) {
+    showBridgeDebug(`present() threw: ${err instanceof Error ? err.message : String(err)}`)
+    throw err
   }
 }
 
@@ -233,6 +244,7 @@ app.innerHTML = `
       <h1 id="screenTitle" style="font-size:18px;font-weight:600;margin:0;">Even Web Reader</h1>
       <span id="pageCount" style="font-size:12px;color:#919191;"></span>
     </header>
+    <div id="bridgeDebug" style="font-size:11px;color:#7B9EFF;margin-bottom:8px;word-break:break-all;"></div>
     <div id="mirror" style="background:#2E2E2E;border:1px solid #3E3E3E;border-radius:12px;padding:20px;font-size:15px;line-height:1.55;color:#E5E5E5;margin:0;"></div>
     <div id="downloadSection" style="display:none;margin-top:12px;flex-direction:column;gap:6px;">
       <button id="downloadSelectedBtn" style="padding:8px;border-radius:6px;border:none;background:#3E3E3E;color:#E5E5E5;cursor:pointer;">チェックした話をダウンロード</button>
