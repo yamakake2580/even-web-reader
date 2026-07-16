@@ -175,6 +175,13 @@ const EVENT_DEBOUNCE_MS = 300
 let lastEventAt = 0
 
 const unsubscribe = bridge.onEvenHubEvent((event) => {
+  // TEMP: showing exactly what arrives, to diagnose swipe-to-page-through
+  // not working on the bookshelf/chapterList screens without needing
+  // Safari Web Inspector (not available this session).
+  showBridgeDebug(
+    `event sys:${event.sysEvent?.eventType ?? '-'} text:${event.textEvent?.eventType ?? '-'} list:${event.listEvent?.eventType ?? '-'}(idx:${event.listEvent?.currentSelectItemIndex ?? '-'})`,
+  )
+
   const now = Date.now()
   if (now - lastEventAt < EVENT_DEBOUNCE_MS) return
   lastEventAt = now
