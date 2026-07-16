@@ -53,3 +53,64 @@ export function getReadingPosition(): ReadingPosition | null {
 export function setReadingPosition(position: ReadingPosition): void {
   setStorage('reading_position', JSON.stringify(position))
 }
+
+// Offline chapter storage. Unlike backend_url/reading_position (a small,
+// fixed, always-needed set of keys preloaded at startup), chapters are
+// numerous, can be large, and are only needed on demand - so these talk to
+// the bridge directly per call instead of going through the in-memory cache.
+// There is no "list keys" call on the bridge, so a small JSON index array
+// (one key per novel) tracks which episodes have been saved, so we can
+// answer "is chapter N downloaded?" without probing every possible key.
+export interface OfflineChapter {
+  title: string
+  text: string
+}
+
+function chapterKey(novelId: string, episode: string): string {
+  return `chapter:${novelId}:${episode}`
+}
+
+function chapterIndexKey(novelId: string): string {
+  return `chapter_index:${novelId}`
+}
+
+async function getChapterIndex(novelId: string): Promise<string[]> {
+  if (!bridgeRef) return []
+  try {
+    const raw = await bridgeRef.getLocalStorage(chapterIndexKey(novelId))
+    return raw ? (JSON.parse(raw) as string[]) : []
+  } catch {
+    return []
+  }
+}
+
+export async function getOfflineChapter(novelId: string, episode: string): Promise<OfflineChapter | null> {
+  if (!bridgeRef) return null
+  try {
+    const raw = await bridgeRef.getLocalStorage(chapterKey(novelId, episode))
+    return raw ? (JSON.parse(raw) as OfflineChapter) : null
+  } catch {
+    return null
+  }
+}
+
+/** Best-effort: returns false (does not throw) if saving fails, e.g. storage full. */
+export async function saveOfflineChapter(novelId: string, episode: string, chapter: OfflineChapter): Promise<boolean> {
+  if (!bridgeRef) return false
+  try {
+    await bridgeRef.setLocalStorage(chapterKey(novelId, episode), JSON.stringify(chapter))
+    const index = await getChapterIndex(novelId)
+    if (!index.includes(episode)) {
+      await bridgeRef.setLocalStorage(chapterIndexKey(novelId), JSON.stringify([...index, episode]))
+    }
+    return true
+  } catch (err) {
+    console.error(`saveOfflineChapter(${novelId}, ${episode}) failed:`, err)
+    return false
+  }
+}
+
+export async function isChapterSavedOffline(novelId: string, episode: string): Promise<boolean> {
+  const index = await getChapterIndex(novelId)
+  return index.includes(episode)
+}

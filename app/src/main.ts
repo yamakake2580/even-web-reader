@@ -6,12 +6,20 @@ import {
   OsEventTypeList,
   type EvenHubEvent,
 } from '@evenrealities/even_hub_sdk'
-import { registerNovel } from './api'
+import { fetchChapter, registerNovel } from './api'
 import { loadBookshelf, selectedNovel, type BookshelfState } from './screens/bookshelf'
 import { LAST_READ_MARKER, loadChapterList, selectedChapter, type ChapterListState } from './screens/chapterList'
 import { loadReader, showReaderPage, pagerLabel, type ReaderState } from './screens/reader'
 import type { PageSpec } from './screens/types'
-import { getReadingPosition, getStorage, initStorage, setReadingPosition, setStorage } from './storage'
+import {
+  getReadingPosition,
+  getStorage,
+  initStorage,
+  isChapterSavedOffline,
+  saveOfflineChapter,
+  setReadingPosition,
+  setStorage,
+} from './storage'
 
 const bridge = await waitForEvenAppBridge()
 await initStorage(bridge)
@@ -212,6 +220,10 @@ app.innerHTML = `
       <span id="pageCount" style="font-size:12px;color:#919191;"></span>
     </header>
     <div id="mirror" style="background:#2E2E2E;border:1px solid #3E3E3E;border-radius:12px;padding:20px;font-size:15px;line-height:1.55;color:#E5E5E5;margin:0;"></div>
+    <div id="downloadSection" style="display:none;margin-top:12px;">
+      <button id="downloadAllBtn" style="padding:8px;border-radius:6px;border:none;background:#3E3E3E;color:#E5E5E5;cursor:pointer;width:100%;">この小説を全話ダウンロード</button>
+      <div id="downloadStatus" style="font-size:12px;color:#919191;margin-top:6px;"></div>
+    </div>
     <footer style="font-size:12px;color:#7B7B7B;text-align:center;margin-top:16px;">
       Tap glasses: select / next page · swipe up: previous · double-tap: back
     </footer>
@@ -270,13 +282,51 @@ document.getElementById('novelUrlAdd')?.addEventListener('click', () => {
     })
 })
 
+// Sequential on purpose: avoids hammering the backend with many concurrent
+// requests when a novel has dozens/hundreds of chapters, and lets the
+// status line show real progress instead of an all-or-nothing result.
+async function downloadAllChapters(state: ChapterListState): Promise<void> {
+  const statusEl = document.getElementById('downloadStatus')
+  let saved = 0
+  let skipped = 0
+  let failed = 0
+  for (const chapter of state.chapters) {
+    if (statusEl) statusEl.textContent = `ダウンロード中... ${saved + skipped + failed} / ${state.chapters.length}`
+    if (await isChapterSavedOffline(state.novelId, chapter.episode)) {
+      skipped++
+      continue
+    }
+    try {
+      const content = await fetchChapter(state.novelId, chapter.episode)
+      await saveOfflineChapter(state.novelId, chapter.episode, content)
+      saved++
+    } catch (err) {
+      console.error(err)
+      failed++
+    }
+  }
+  if (statusEl) {
+    statusEl.textContent = `完了: ${saved}件保存 / ${skipped}件は保存済み / ${failed}件失敗`
+  }
+}
+
+document.getElementById('downloadAllBtn')?.addEventListener('click', () => {
+  if (!screen || screen.name !== 'chapterList') return
+  downloadAllChapters(screen.state).catch((err) => console.error(err))
+})
+
 function mirrorCompanion(): void {
   const title = document.getElementById('screenTitle')
   const mirror = document.getElementById('mirror')
   const count = document.getElementById('pageCount')
   const status = document.getElementById('companionStatus')
+  const downloadSection = document.getElementById('downloadSection')
   if (status && lastError) status.textContent = lastError
   if (!title || !mirror || !count || !screen) return
+
+  if (downloadSection) {
+    downloadSection.style.display = screen.name === 'chapterList' ? 'block' : 'none'
+  }
 
   if (screen.name === 'bookshelf') {
     title.textContent = '本棚'
@@ -291,6 +341,8 @@ function mirrorCompanion(): void {
         c.episode === chapterListState.lastReadEpisode ? `${LAST_READ_MARKER}${c.title}` : c.title,
       ),
     )
+    const downloadStatus = document.getElementById('downloadStatus')
+    if (downloadStatus) downloadStatus.textContent = ''
   } else {
     title.textContent = screen.state.title
     count.textContent = `${screen.state.currentPage + 1} / ${screen.state.pages.length}`
