@@ -199,44 +199,36 @@ const unsubscribe = bridge.onEvenHubEvent((event) => {
     return
   }
 
-  // Swipe pages through a capped list (see screens/paging.ts) before falling
-  // through to selection handling below.
-  if (screen.name === 'bookshelf') {
-    const { page, totalPages } = screen.state
-    if (hasEventType(event, OsEventTypeList.SCROLL_TOP_EVENT)) {
-      if (page > 0) goToBookshelf(page - 1).catch((err) => console.error(err))
-      return
-    }
-    if (hasEventType(event, OsEventTypeList.SCROLL_BOTTOM_EVENT)) {
-      if (page < totalPages - 1) goToBookshelf(page + 1).catch((err) => console.error(err))
-      return
-    }
-  }
-  if (screen.name === 'chapterList') {
-    const { novelId, page, totalPages } = screen.state
-    if (hasEventType(event, OsEventTypeList.SCROLL_TOP_EVENT)) {
-      if (page > 0) goToChapterList(novelId, page - 1).catch((err) => console.error(err))
-      return
-    }
-    if (hasEventType(event, OsEventTypeList.SCROLL_BOTTOM_EVENT)) {
-      if (page < totalPages - 1) goToChapterList(novelId, page + 1).catch((err) => console.error(err))
-      return
-    }
-  }
-
   // A List_ItemEvent payload (which carries currentSelectItemIndex) is itself
   // the selection signal - it is only ever sent for a selection, and
   // double-click on a list already returned above, so no eventType check
   // is needed (or reliable enough to require) here.
+  //
+  // Paging: swiping on a list container turns out to move the host's own
+  // focus cursor between the currently-rendered items instead of reaching
+  // our event handler as a page-change signal (confirmed on real hardware -
+  // focus moves within the visible items, then does nothing past the last
+  // one). So "prev/next page" are ordinary selectable list entries instead
+  // (see screens/paging.ts) - tapping one is a ordinary selection event,
+  // handled here like any other item.
   if (screen.name === 'bookshelf' && event.listEvent) {
-    const novel = selectedNovel(screen.state, event.listEvent)
-    if (novel) goToChapterList(novel.id).catch((err) => console.error(err))
+    const selection = selectedNovel(screen.state, event.listEvent)
+    if (selection?.kind === 'item') goToChapterList(selection.value.id).catch((err) => console.error(err))
+    else if (selection?.kind === 'prevPage') goToBookshelf(screen.state.page - 1).catch((err) => console.error(err))
+    else if (selection?.kind === 'nextPage') goToBookshelf(screen.state.page + 1).catch((err) => console.error(err))
     return
   }
 
   if (screen.name === 'chapterList' && event.listEvent) {
-    const chapter = selectedChapter(screen.state, event.listEvent)
-    if (chapter) goToReader(screen.state.novelId, chapter.episode).catch((err) => console.error(err))
+    const chapterListState = screen.state
+    const selection = selectedChapter(chapterListState, event.listEvent)
+    if (selection?.kind === 'item') {
+      goToReader(chapterListState.novelId, selection.value.episode).catch((err) => console.error(err))
+    } else if (selection?.kind === 'prevPage') {
+      goToChapterList(chapterListState.novelId, chapterListState.page - 1).catch((err) => console.error(err))
+    } else if (selection?.kind === 'nextPage') {
+      goToChapterList(chapterListState.novelId, chapterListState.page + 1).catch((err) => console.error(err))
+    }
     return
   }
 
