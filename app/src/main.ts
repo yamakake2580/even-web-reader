@@ -249,12 +249,12 @@ app.innerHTML = `
       <button id="novelUrlAdd" style="padding:8px;border-radius:6px;border:none;background:#3E3E3E;color:#E5E5E5;cursor:pointer;">Add novel</button>
       <span id="companionStatus" style="font-size:12px;color:#919191;"></span>
       <button id="showFavoritesBtn" style="padding:8px;border-radius:6px;border:none;background:#3E3E3E;color:#E5E5E5;cursor:pointer;margin-top:8px;">ハーメルンのお気に入りを見る</button>
-      <div id="favoritesList" style="display:flex;flex-direction:column;"></div>
-      <div id="favoritesPager" style="display:none;justify-content:space-between;align-items:center;">
-        <button id="favoritesPrev" style="padding:6px 10px;border-radius:6px;border:none;background:#3E3E3E;color:#E5E5E5;cursor:pointer;">← 前へ</button>
+      <div id="favoritesPager" style="display:none;justify-content:space-between;align-items:center;position:sticky;top:0;background:#232323;padding:8px 0;z-index:1;">
+        <button id="favoritesPrev" style="padding:8px 14px;border-radius:6px;border:none;background:#3E3E3E;color:#E5E5E5;cursor:pointer;">← 前へ</button>
         <span id="favoritesPageLabel" style="font-size:12px;color:#919191;"></span>
-        <button id="favoritesNext" style="padding:6px 10px;border-radius:6px;border:none;background:#3E3E3E;color:#E5E5E5;cursor:pointer;">次へ →</button>
+        <button id="favoritesNext" style="padding:8px 14px;border-radius:6px;border:none;background:#3E3E3E;color:#E5E5E5;cursor:pointer;">次へ →</button>
       </div>
+      <div id="favoritesList" style="display:flex;flex-direction:column;"></div>
       <button id="manageDownloadsBtn" style="padding:8px;border-radius:6px;border:none;background:#3E3E3E;color:#E5E5E5;cursor:pointer;margin-top:8px;">本棚からダウンロード管理</button>
       <div id="novelPickerList" style="display:flex;flex-direction:column;"></div>
       <div id="phoneChapterList" style="display:none;flex-direction:column;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid #3E3E3E;">
