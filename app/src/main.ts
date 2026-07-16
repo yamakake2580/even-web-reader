@@ -52,6 +52,19 @@ function showBridgeDebug(text: string): void {
   const el = document.getElementById('bridgeDebug')
   if (el) el.textContent = text
 }
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+// TEMP diagnostic: paging bookshelf/chapterList page 0 -> 1 succeeded, but
+// page 1 -> 2 (a second rebuildPageContainer call in a row) failed with the
+// same item count that just worked - suggesting the native side needs to
+// settle between rebuilds, not that the payload itself was too big. Space
+// consecutive rebuilds out and retry once after a longer pause on failure.
+let lastRebuildAt = 0
+const MIN_REBUILD_GAP_MS = 600
+
 async function present(spec: PageSpec): Promise<void> {
   try {
     if (!launched) {
@@ -59,10 +72,20 @@ async function present(spec: PageSpec): Promise<void> {
       const result = await bridge.createStartUpPageContainer(new CreateStartUpPageContainer(spec))
       showBridgeDebug(`createStartUpPageContainer -> ${result}`)
       if (result !== 0) console.error('createStartUpPageContainer failed:', result)
+      lastRebuildAt = Date.now()
     } else {
-      const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(spec))
+      const sinceLast = Date.now() - lastRebuildAt
+      if (sinceLast < MIN_REBUILD_GAP_MS) await wait(MIN_REBUILD_GAP_MS - sinceLast)
+
+      let ok = await bridge.rebuildPageContainer(new RebuildPageContainer(spec))
       showBridgeDebug(`rebuildPageContainer -> ${ok}`)
-      if (!ok) console.error('rebuildPageContainer failed')
+      if (!ok) {
+        console.error('rebuildPageContainer failed, retrying once after a pause')
+        await wait(800)
+        ok = await bridge.rebuildPageContainer(new RebuildPageContainer(spec))
+        showBridgeDebug(`rebuildPageContainer (retry) -> ${ok}`)
+      }
+      lastRebuildAt = Date.now()
     }
   } catch (err) {
     showBridgeDebug(`present() threw: ${err instanceof Error ? err.message : String(err)}`)
