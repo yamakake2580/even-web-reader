@@ -10,8 +10,17 @@ const CONTENT_BUDGET = 55
 const PREV_PAGE_LABEL = '← 前のページ'
 const NEXT_PAGE_LABEL = '次のページ →'
 
+// Two constraints on the container name, both learned on hardware:
+//   - rebuildPageContainer fails if the new list reuses the SAME name as the
+//     one currently shown (bookshelf p0 -> p1, both "bookshelf", failed).
+//   - giving every page a brand-new unique name instead accumulates
+//     containers and fails around the 4th (p0..p3), matching the documented
+//     ~4-container ceiling - whereas the normal bookshelf->chapter->reader
+//     flow reuses a small fixed set of names and works indefinitely.
+// Alternating between just two names satisfies both: adjacent pages always
+// differ, yet only two names ever exist so nothing accumulates.
 export function pagedContainerName(base: string, page: number): string {
-  return `${base}_p${page}`
+  return `${base}_${page % 2}`
 }
 
 export interface Paginated<T> {
