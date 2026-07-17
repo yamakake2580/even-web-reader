@@ -120,3 +120,26 @@ export async function getOfflineChapterCount(novelId: string): Promise<number> {
   const index = await getChapterIndex(novelId)
   return index.length
 }
+
+// Metadata cache (novel list + per-novel chapter lists), so the bookshelf and
+// chapter list can still be shown when the backend is unreachable - letting
+// already-downloaded chapters be reached and read fully offline. Written
+// whenever a fetch succeeds; read as a fallback when a fetch fails.
+export async function cacheJson(key: string, value: unknown): Promise<void> {
+  if (!bridgeRef) return
+  try {
+    await bridgeRef.setLocalStorage(key, JSON.stringify(value))
+  } catch (err) {
+    console.error(`cacheJson(${key}) failed:`, err)
+  }
+}
+
+export async function readCachedJson<T>(key: string): Promise<T | null> {
+  if (!bridgeRef) return null
+  try {
+    const raw = await bridgeRef.getLocalStorage(key)
+    return raw ? (JSON.parse(raw) as T) : null
+  } catch {
+    return null
+  }
+}

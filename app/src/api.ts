@@ -1,4 +1,4 @@
-import { getStorage } from './storage'
+import { cacheJson, getStorage, readCachedJson } from './storage'
 
 const DEFAULT_BACKEND_URL = 'http://localhost:8787'
 
@@ -36,12 +36,34 @@ export interface ChapterContent {
   text: string
 }
 
-export function fetchNovels(): Promise<NovelSummary[]> {
-  return getJson('/novels')
+// Offline fallback: cache metadata on every successful fetch and serve the
+// cache when the backend is unreachable, so the bookshelf and chapter list
+// (and thus reaching already-downloaded chapters) work fully offline.
+const NOVELS_CACHE_KEY = 'novels_cache'
+const novelDetailKey = (id: string) => `novel_detail:${id}`
+
+export async function fetchNovels(): Promise<NovelSummary[]> {
+  try {
+    const novels = await getJson<NovelSummary[]>('/novels')
+    await cacheJson(NOVELS_CACHE_KEY, novels)
+    return novels
+  } catch (err) {
+    const cached = await readCachedJson<NovelSummary[]>(NOVELS_CACHE_KEY)
+    if (cached) return cached
+    throw err
+  }
 }
 
-export function fetchNovel(novelId: string): Promise<NovelDetail> {
-  return getJson(`/novels/${encodeURIComponent(novelId)}`)
+export async function fetchNovel(novelId: string): Promise<NovelDetail> {
+  try {
+    const detail = await getJson<NovelDetail>(`/novels/${encodeURIComponent(novelId)}`)
+    await cacheJson(novelDetailKey(novelId), detail)
+    return detail
+  } catch (err) {
+    const cached = await readCachedJson<NovelDetail>(novelDetailKey(novelId))
+    if (cached) return cached
+    throw err
+  }
 }
 
 export function fetchChapter(novelId: string, episode: string): Promise<ChapterContent> {
