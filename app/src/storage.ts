@@ -114,3 +114,9 @@ export async function isChapterSavedOffline(novelId: string, episode: string): P
   const index = await getChapterIndex(novelId)
   return index.includes(episode)
 }
+
+/** How many chapters of a novel are saved offline (for the bookshelf's fully-downloaded mark). */
+export async function getOfflineChapterCount(novelId: string): Promise<number> {
+  const index = await getChapterIndex(novelId)
+  return index.length
+}

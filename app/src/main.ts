@@ -582,7 +582,7 @@ function mirrorCompanion(): void {
   if (screen.name === 'bookshelf') {
     title.textContent = '本棚'
     count.textContent = `${screen.state.novels.length} 冊`
-    mirror.innerHTML = listHtml(screen.state.novels.map((n) => nonEmptyLabel(n.title)))
+    mirror.innerHTML = listHtml(screen.state.menu.items.map((item) => item.label))
   } else if (screen.name === 'chapterList') {
     const chapterListState = screen.state
     const cursorEpisode = chapterListState.menu.items[chapterListState.menu.cursor]?.value.episode

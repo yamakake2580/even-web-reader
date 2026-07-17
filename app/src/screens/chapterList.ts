@@ -5,8 +5,10 @@ import { nonEmptyLabel } from './util'
 import type { PageSpec } from './types'
 
 // Chapters saved for offline reading get this marker so it is visible on the
-// glasses which ones do not need the backend to open.
-export const DOWNLOADED_MARKER = '✓ '
+// glasses which ones do not need the backend to open. Uses ● (Geometric
+// Shapes, same block as the ▶ cursor that renders fine) rather than ✓, which
+// the G2 font does not appear to include.
+export const DOWNLOADED_MARKER = '● '
 
 export interface ChapterListState {
   novelId: string
