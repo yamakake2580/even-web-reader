@@ -15,14 +15,9 @@ import {
   type ChapterMeta,
   type FavoriteNovel,
 } from './api'
-import { loadBookshelf, selectedNovel, type BookshelfState } from './screens/bookshelf'
-import {
-  DOWNLOADED_MARKER,
-  LAST_READ_MARKER,
-  loadChapterList,
-  selectedChapter,
-  type ChapterListState,
-} from './screens/chapterList'
+import { loadBookshelf, type BookshelfState } from './screens/bookshelf'
+import { DOWNLOADED_MARKER, loadChapterList, type ChapterListState } from './screens/chapterList'
+import { moveCursor, renderMenu, selectedItem } from './screens/menu'
 import { loadReader, showReaderPage, pagerLabel, type ReaderState } from './screens/reader'
 import type { PageSpec } from './screens/types'
 import { nonEmptyLabel } from './screens/util'
@@ -46,28 +41,28 @@ type Screen =
 
 let screen: Screen | null = null
 
-// createStartUpPageContainer is required for an app's very first screen;
 function showBridgeDebug(text: string): void {
   const el = document.getElementById('bridgeDebug')
   if (el) el.textContent = text
 }
 
-// Every screen transition rebuilds the whole page. Measured on hardware:
-// rebuildPageContainer succeeds a few times then starts returning false
-// (containers appear to accumulate across rebuilds until the host's ceiling),
-// which broke paging on the 3rd page and any list opened after a few
-// navigations. createStartUpPageContainer, by contrast, tears the page down
-// and rebuilds it fresh - the one call that has been reliable all session -
-// so we use it for every transition, not just the first, sidestepping the
-// rebuild accumulation entirely. If it ever rejects a spec (returns non-zero)
-// we fall back to rebuildPageContainer.
+// Per the page-lifecycle docs: createStartUpPageContainer must be called
+// exactly once at startup; every screen transition after that uses
+// rebuildPageContainer. Screens are now cursor-driven TEXT menus (see
+// screens/menu.ts), so this only fires on entering a screen - moving the
+// cursor within a menu is a flicker-free textContainerUpgrade, no rebuild.
+let launched = false
 async function present(spec: PageSpec): Promise<void> {
   try {
-    const result = await bridge.createStartUpPageContainer(new CreateStartUpPageContainer(spec))
-    showBridgeDebug(`createStartUpPageContainer -> ${result}`)
-    if (result !== 0) {
+    if (!launched) {
+      launched = true
+      const result = await bridge.createStartUpPageContainer(new CreateStartUpPageContainer(spec))
+      showBridgeDebug(`createStartUpPageContainer -> ${result}`)
+      if (result !== 0) console.error('createStartUpPageContainer failed:', result)
+    } else {
       const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(spec))
-      showBridgeDebug(`createStartUp -> ${result}, rebuild -> ${ok}`)
+      showBridgeDebug(`rebuildPageContainer -> ${ok}`)
+      if (!ok) console.error('rebuildPageContainer failed')
     }
   } catch (err) {
     showBridgeDebug(`present() threw: ${err instanceof Error ? err.message : String(err)}`)
@@ -85,7 +80,7 @@ let lastError: string | null = null
 
 async function presentError(message: string): Promise<void> {
   lastError = message
-  if (!screen) {
+  if (!launched) {
     // Nothing has ever been shown yet (very first launch failed) - put a
     // readable error on the glasses instead of leaving them blank.
     await present({
@@ -109,9 +104,9 @@ async function presentError(message: string): Promise<void> {
   }
 }
 
-async function goToBookshelf(page = 0): Promise<void> {
+async function goToBookshelf(): Promise<void> {
   try {
-    const { state, spec } = await loadBookshelf(page)
+    const { state, spec } = await loadBookshelf()
     screen = { name: 'bookshelf', state }
     lastError = null
     await present(spec)
@@ -122,11 +117,11 @@ async function goToBookshelf(page = 0): Promise<void> {
   mirrorCompanion()
 }
 
-async function goToChapterList(novelId: string, page = 0): Promise<void> {
+async function goToChapterList(novelId: string): Promise<void> {
   try {
     const saved = getReadingPosition()
     const lastReadEpisode = saved && saved.novelId === novelId ? saved.episode : undefined
-    const { state, spec } = await loadChapterList(novelId, lastReadEpisode, page)
+    const { state, spec } = await loadChapterList(novelId, lastReadEpisode)
     screen = { name: 'chapterList', state }
     lastError = null
     await present(spec)
@@ -199,31 +194,42 @@ const unsubscribe = bridge.onEvenHubEvent((event) => {
     return
   }
 
-  // A List_ItemEvent payload (which carries currentSelectItemIndex) is itself
-  // the selection signal - it is only ever sent for a selection, and
-  // double-click on a list already returned above, so no eventType check
-  // is needed (or reliable enough to require) here. The list scrolls
-  // natively on the glasses within a page; prev/next page are extra
-  // selectable entries (see screens/paging.ts) for going beyond the cap.
-  if (screen.name === 'bookshelf' && event.listEvent) {
-    const selection = selectedNovel(screen.state, event.listEvent)
-    if (selection?.kind === 'item') goToChapterList(selection.value.id).catch((err) => console.error(err))
-    else if (selection?.kind === 'prevPage') goToBookshelf(screen.state.page - 1).catch((err) => console.error(err))
-    else if (selection?.kind === 'nextPage') goToBookshelf(screen.state.page + 1).catch((err) => console.error(err))
-    return
+  // Menu screens (bookshelf, chapterList): swipe moves the cursor and
+  // redraws in place via textContainerUpgrade (no page rebuild); tap selects
+  // the cursor item. Scroll/click on a text container arrive via
+  // textEvent/sysEvent, so use hasEventType (not event.listEvent).
+  if (screen.name === 'bookshelf') {
+    const menu = screen.state.menu
+    if (hasEventType(event, OsEventTypeList.SCROLL_TOP_EVENT)) {
+      if (moveCursor(menu, -1)) renderMenu(bridge, menu).then(mirrorCompanion).catch((err) => console.error(err))
+      return
+    }
+    if (hasEventType(event, OsEventTypeList.SCROLL_BOTTOM_EVENT)) {
+      if (moveCursor(menu, 1)) renderMenu(bridge, menu).then(mirrorCompanion).catch((err) => console.error(err))
+      return
+    }
+    if (hasEventType(event, OsEventTypeList.CLICK_EVENT)) {
+      const novel = selectedItem(menu)
+      if (novel) goToChapterList(novel.id).catch((err) => console.error(err))
+      return
+    }
   }
 
-  if (screen.name === 'chapterList' && event.listEvent) {
-    const chapterListState = screen.state
-    const selection = selectedChapter(chapterListState, event.listEvent)
-    if (selection?.kind === 'item') {
-      goToReader(chapterListState.novelId, selection.value.episode).catch((err) => console.error(err))
-    } else if (selection?.kind === 'prevPage') {
-      goToChapterList(chapterListState.novelId, chapterListState.page - 1).catch((err) => console.error(err))
-    } else if (selection?.kind === 'nextPage') {
-      goToChapterList(chapterListState.novelId, chapterListState.page + 1).catch((err) => console.error(err))
+  if (screen.name === 'chapterList') {
+    const menu = screen.state.menu
+    if (hasEventType(event, OsEventTypeList.SCROLL_TOP_EVENT)) {
+      if (moveCursor(menu, -1)) renderMenu(bridge, menu).then(mirrorCompanion).catch((err) => console.error(err))
+      return
     }
-    return
+    if (hasEventType(event, OsEventTypeList.SCROLL_BOTTOM_EVENT)) {
+      if (moveCursor(menu, 1)) renderMenu(bridge, menu).then(mirrorCompanion).catch((err) => console.error(err))
+      return
+    }
+    if (hasEventType(event, OsEventTypeList.CLICK_EVENT)) {
+      const chapter = selectedItem(menu)
+      if (chapter) goToReader(screen.state.novelId, chapter.episode).catch((err) => console.error(err))
+      return
+    }
   }
 
   if (screen.name === 'reader') {
@@ -270,7 +276,7 @@ app.innerHTML = `
       <div id="downloadStatus" style="font-size:12px;color:#919191;"></div>
     </div>
     <footer style="font-size:12px;color:#7B7B7B;text-align:center;margin-top:16px;">
-      Tap glasses: select / next page · swipe up: previous · double-tap: back
+      一覧: スワイプで選択移動 / タップで決定 · リーダー: タップで次ページ / 上スワイプで前 · ダブルタップで戻る
     </footer>
     <section style="margin-top:24px;padding-top:16px;border-top:1px solid #3E3E3E;display:flex;flex-direction:column;gap:12px;">
       <label style="font-size:12px;color:#919191;display:flex;flex-direction:column;gap:4px;">
@@ -441,7 +447,7 @@ async function downloadChapters(
 
 async function refreshChapterListIfShowing(novelId: string): Promise<void> {
   if (screen?.name === 'chapterList' && screen.state.novelId === novelId) {
-    await goToChapterList(novelId, screen.state.page)
+    await goToChapterList(novelId)
   }
 }
 
@@ -572,15 +578,17 @@ function mirrorCompanion(): void {
     mirror.innerHTML = listHtml(screen.state.novels.map((n) => nonEmptyLabel(n.title)))
   } else if (screen.name === 'chapterList') {
     const chapterListState = screen.state
+    const cursorEpisode = chapterListState.menu.items[chapterListState.menu.cursor]?.value.episode
     title.textContent = chapterListState.novelTitle
     count.textContent = `${chapterListState.chapters.length} 話`
     // Checkboxes here (rather than a read-only list) are what
     // downloadSelectedBtn reads via data-episode when downloading a subset
-    // of chapters instead of the whole novel.
+    // of chapters instead of the whole novel. The glasses cursor is mirrored
+    // with a ▶ marker.
     mirror.innerHTML = chapterListState.chapters
       .map((c) => {
         const marker =
-          (c.episode === chapterListState.lastReadEpisode ? LAST_READ_MARKER : '') +
+          (c.episode === cursorEpisode ? '▶ ' : '') +
           (chapterListState.downloadedEpisodes.has(c.episode) ? DOWNLOADED_MARKER : '')
         return `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;">
           <input type="checkbox" data-episode="${escapeHtml(c.episode)}" />
