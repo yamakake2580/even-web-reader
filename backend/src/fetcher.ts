@@ -24,7 +24,14 @@ let queue: Promise<void> = Promise.resolve();
 
 async function getBrowser(): Promise<Browser> {
   if (!browserPromise) {
-    browserPromise = chromium.launch({ headless: true });
+    // --no-sandbox: Chromium's sandbox can't run as root inside a container
+    // (how this is deployed via Docker). --disable-dev-shm-usage: containers
+    // often have a tiny /dev/shm which crashes Chromium. Both are harmless on
+    // a normal desktop run too.
+    browserPromise = chromium.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-dev-shm-usage"],
+    });
   }
   return browserPromise;
 }

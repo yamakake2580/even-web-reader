@@ -1,0 +1,15 @@
+services:
+  backend:
+    build: .
+    ports:
+      - "8787:8787"
+    # Secrets (HAMELN_COOKIE, AUTH_TOKEN, ...) are read at runtime from .env,
+    # never baked into the image (.env is in .dockerignore).
+    env_file:
+      - .env
+    # Persist the JSON cache so it survives container rebuilds/restarts.
+    volumes:
+      - ./data:/app/data
+    # Always-on: restart on crash and on host boot (as long as the Docker
+    # daemon starts on boot, which is the default).
+    restart: unless-stopped
