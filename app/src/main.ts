@@ -162,11 +162,18 @@ async function turnReaderPage(state: ReaderState, index: number): Promise<void> 
 // for a given eventType, rather than picking just one, is the only way
 // input works identically on both - see docs/sdk-quirks.md "Quirk 2" at
 // https://github.com/aleapc/even-hub-devguide.
+// CLICK_EVENT is 0, and JSON serialization drops zero values, so a tap
+// arrives as an envelope whose eventType is missing (undefined) rather than
+// 0 - see sdk-quirks.md "Quirk 1". Coalesce a present envelope's eventType
+// to 0 so taps match; this is why scrolling (1/2) worked but tapping did not.
+function envelopeType(env: { eventType?: OsEventTypeList } | undefined): OsEventTypeList | null {
+  return env ? (env.eventType ?? OsEventTypeList.CLICK_EVENT) : null
+}
 function hasEventType(event: EvenHubEvent, type: OsEventTypeList): boolean {
   return (
-    event.sysEvent?.eventType === type ||
-    event.textEvent?.eventType === type ||
-    event.listEvent?.eventType === type
+    envelopeType(event.sysEvent) === type ||
+    envelopeType(event.textEvent) === type ||
+    envelopeType(event.listEvent) === type
   )
 }
 
