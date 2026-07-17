@@ -6,11 +6,27 @@ function getBackendUrl(): string {
   return getStorage('backend_url') || DEFAULT_BACKEND_URL
 }
 
-async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${getBackendUrl()}${path}`)
-  if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`)
-  return res.json() as Promise<T>
+// When the backend host is unreachable (e.g. the machine running it is asleep
+// or off), a plain fetch doesn't fail fast - it hangs until the OS connection
+// timeout (tens of seconds), which made downloaded novels seem not to open
+// while they were really just waiting on that hang before falling back to the
+// offline cache. A short AbortController timeout makes metadata reads give up
+// quickly so the offline fallback kicks in almost immediately. Chapter body
+// fetches keep no timeout (a real scrape can legitimately take several
+// seconds), and reading a downloaded chapter is offline-first anyway.
+async function getJson<T>(path: string, timeoutMs?: number): Promise<T> {
+  const controller = new AbortController()
+  const timer = timeoutMs ? setTimeout(() => controller.abort(), timeoutMs) : null
+  try {
+    const res = await fetch(`${getBackendUrl()}${path}`, { signal: controller.signal })
+    if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`)
+    return (await res.json()) as T
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
 }
+
+const METADATA_TIMEOUT_MS = 4000
 
 export interface ChapterMeta {
   episode: string
@@ -44,7 +60,7 @@ const novelDetailKey = (id: string) => `novel_detail:${id}`
 
 export async function fetchNovels(): Promise<NovelSummary[]> {
   try {
-    const novels = await getJson<NovelSummary[]>('/novels')
+    const novels = await getJson<NovelSummary[]>('/novels', METADATA_TIMEOUT_MS)
     await cacheJson(NOVELS_CACHE_KEY, novels)
     return novels
   } catch (err) {
@@ -56,7 +72,7 @@ export async function fetchNovels(): Promise<NovelSummary[]> {
 
 export async function fetchNovel(novelId: string): Promise<NovelDetail> {
   try {
-    const detail = await getJson<NovelDetail>(`/novels/${encodeURIComponent(novelId)}`)
+    const detail = await getJson<NovelDetail>(`/novels/${encodeURIComponent(novelId)}`, METADATA_TIMEOUT_MS)
     await cacheJson(novelDetailKey(novelId), detail)
     return detail
   } catch (err) {
