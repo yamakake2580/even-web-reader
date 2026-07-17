@@ -47,26 +47,27 @@ type Screen =
 let screen: Screen | null = null
 
 // createStartUpPageContainer is required for an app's very first screen;
-// every screen transition after that must use rebuildPageContainer instead.
-let launched = false
 function showBridgeDebug(text: string): void {
   const el = document.getElementById('bridgeDebug')
   if (el) el.textContent = text
 }
 
-// createStartUpPageContainer is required for an app's very first screen;
-// every screen transition after that must use rebuildPageContainer instead.
+// Every screen transition rebuilds the whole page. Measured on hardware:
+// rebuildPageContainer succeeds a few times then starts returning false
+// (containers appear to accumulate across rebuilds until the host's ceiling),
+// which broke paging on the 3rd page and any list opened after a few
+// navigations. createStartUpPageContainer, by contrast, tears the page down
+// and rebuilds it fresh - the one call that has been reliable all session -
+// so we use it for every transition, not just the first, sidestepping the
+// rebuild accumulation entirely. If it ever rejects a spec (returns non-zero)
+// we fall back to rebuildPageContainer.
 async function present(spec: PageSpec): Promise<void> {
   try {
-    if (!launched) {
-      launched = true
-      const result = await bridge.createStartUpPageContainer(new CreateStartUpPageContainer(spec))
-      showBridgeDebug(`createStartUpPageContainer -> ${result}`)
-      if (result !== 0) console.error('createStartUpPageContainer failed:', result)
-    } else {
+    const result = await bridge.createStartUpPageContainer(new CreateStartUpPageContainer(spec))
+    showBridgeDebug(`createStartUpPageContainer -> ${result}`)
+    if (result !== 0) {
       const ok = await bridge.rebuildPageContainer(new RebuildPageContainer(spec))
-      showBridgeDebug(`rebuildPageContainer -> ${ok}`)
-      if (!ok) console.error('rebuildPageContainer failed')
+      showBridgeDebug(`createStartUp -> ${result}, rebuild -> ${ok}`)
     }
   } catch (err) {
     showBridgeDebug(`present() threw: ${err instanceof Error ? err.message : String(err)}`)
@@ -84,7 +85,9 @@ let lastError: string | null = null
 
 async function presentError(message: string): Promise<void> {
   lastError = message
-  if (!launched) {
+  if (!screen) {
+    // Nothing has ever been shown yet (very first launch failed) - put a
+    // readable error on the glasses instead of leaving them blank.
     await present({
       containerTotalNum: 1,
       textObject: [
