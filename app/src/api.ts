@@ -1,4 +1,4 @@
-import { cacheJson, getStorage, readCachedJson } from './storage'
+import { cacheJson, getOfflineChapters, getStorage, readCachedJson } from './storage'
 
 const DEFAULT_BACKEND_URL = 'http://localhost:8787'
 
@@ -60,8 +60,16 @@ export async function fetchNovel(novelId: string): Promise<NovelDetail> {
     await cacheJson(novelDetailKey(novelId), detail)
     return detail
   } catch (err) {
+    // Prefer the full cached metadata (includes not-yet-downloaded chapters)...
     const cached = await readCachedJson<NovelDetail>(novelDetailKey(novelId))
     if (cached) return cached
+    // ...otherwise rebuild the list from downloaded chapters, so a novel whose
+    // metadata was never cached but whose chapters are saved still opens.
+    const offlineChapters = await getOfflineChapters(novelId)
+    if (offlineChapters.length > 0) {
+      const summary = (await readCachedJson<NovelSummary[]>(NOVELS_CACHE_KEY))?.find((n) => n.id === novelId)
+      return { id: novelId, title: summary?.title ?? novelId, author: summary?.author ?? '', chapters: offlineChapters }
+    }
     throw err
   }
 }

@@ -121,6 +121,23 @@ export async function getOfflineChapterCount(novelId: string): Promise<number> {
   return index.length
 }
 
+/**
+ * Reconstructs a chapter list from the chapters saved offline (each stores its
+ * own title), sorted by episode number. Lets the chapter list open offline
+ * even when the novel's metadata was never cached - a downloaded chapter is
+ * always enough to list and reach it.
+ */
+export async function getOfflineChapters(novelId: string): Promise<{ episode: string; title: string }[]> {
+  const index = await getChapterIndex(novelId)
+  const chapters = await Promise.all(
+    index.map(async (episode) => {
+      const ch = await getOfflineChapter(novelId, episode)
+      return { episode, title: ch?.title ?? episode }
+    }),
+  )
+  return chapters.sort((a, b) => Number(a.episode) - Number(b.episode))
+}
+
 // Metadata cache (novel list + per-novel chapter lists), so the bookshelf and
 // chapter list can still be shown when the backend is unreachable - letting
 // already-downloaded chapters be reached and read fully offline. Written
