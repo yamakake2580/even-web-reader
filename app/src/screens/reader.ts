@@ -13,15 +13,29 @@ const BODY_BORDER = 0
 const INNER_W = BODY_W - 2 * (BODY_PAD + BODY_BORDER)
 const INNER_H = BODY_H - 2 * (BODY_PAD + BODY_BORDER)
 
+export interface ReaderNeighbors {
+  prev?: string
+  next?: string
+}
+
 export interface ReaderState {
   novelId: string
   episode: string
   title: string
   pages: string[]
   currentPage: number
+  // Adjacent episodes, so the reader can roll over to the next/previous
+  // chapter at the page boundaries instead of dead-ending.
+  prevEpisode?: string
+  nextEpisode?: string
 }
 
-export async function loadReader(novelId: string, episode: string, startPage = 0): Promise<{ state: ReaderState; spec: PageSpec }> {
+export async function loadReader(
+  novelId: string,
+  episode: string,
+  startPage = 0,
+  neighbors: ReaderNeighbors = {},
+): Promise<{ state: ReaderState; spec: PageSpec }> {
   // Offline-first: a chapter saved locally (via an explicit download) needs
   // no backend. Otherwise fetch from the backend WITHOUT saving - just
   // reading a chapter no longer consumes local storage; downloading is only
@@ -29,8 +43,18 @@ export async function loadReader(novelId: string, episode: string, startPage = 0
   const offline = await getOfflineChapter(novelId, episode)
   const chapter = offline ?? (await fetchChapter(novelId, episode))
   const pages = paginate(chapter.text, { width: INNER_W, height: INNER_H })
-  const currentPage = pages.length === 0 ? 0 : Math.min(Math.max(startPage, 0), pages.length - 1)
-  const state: ReaderState = { novelId, episode, title: chapter.title, pages, currentPage }
+  const startAtLast = startPage === -1
+  const currentPage =
+    pages.length === 0 ? 0 : startAtLast ? pages.length - 1 : Math.min(Math.max(startPage, 0), pages.length - 1)
+  const state: ReaderState = {
+    novelId,
+    episode,
+    title: chapter.title,
+    pages,
+    currentPage,
+    prevEpisode: neighbors.prev,
+    nextEpisode: neighbors.next,
+  }
 
   const spec: PageSpec = {
     containerTotalNum: 2,

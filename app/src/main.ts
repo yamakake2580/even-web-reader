@@ -16,7 +16,7 @@ import {
   type ChapterMeta,
   type FavoriteNovel,
 } from './api'
-import { loadBookshelf, type BookshelfState } from './screens/bookshelf'
+import { CONTINUE_ID, loadBookshelf, type BookshelfState } from './screens/bookshelf'
 import { DOWNLOADED_MARKER, loadChapterList, type ChapterListState } from './screens/chapterList'
 import { moveCursor, renderMenu, selectedItem } from './screens/menu'
 import { loadReader, showReaderPage, pagerLabel, type ReaderState } from './screens/reader'
@@ -133,11 +133,30 @@ async function goToChapterList(novelId: string): Promise<void> {
   mirrorCompanion()
 }
 
-async function goToReader(novelId: string, episode: string): Promise<void> {
+async function goToReader(novelId: string, episode: string, startPage?: number): Promise<void> {
   try {
-    const saved = getReadingPosition()
-    const startPage = saved && saved.novelId === novelId && saved.episode === episode ? saved.pageIndex : 0
-    const { state, spec } = await loadReader(novelId, episode, startPage)
+    // Resolve adjacent episodes from the (cached) chapter list so the reader
+    // can roll over to the next/previous chapter at the page boundaries.
+    let neighbors = {}
+    try {
+      const detail = await fetchNovel(novelId)
+      const i = detail.chapters.findIndex((c) => c.episode === episode)
+      if (i >= 0) {
+        neighbors = {
+          prev: detail.chapters[i - 1]?.episode,
+          next: detail.chapters[i + 1]?.episode,
+        }
+      }
+    } catch {
+      // No chapter list available (offline, not cached) - chapter rollover
+      // just won't be offered; single-chapter reading still works.
+    }
+
+    if (startPage === undefined) {
+      const saved = getReadingPosition()
+      startPage = saved && saved.novelId === novelId && saved.episode === episode ? saved.pageIndex : 0
+    }
+    const { state, spec } = await loadReader(novelId, episode, startPage, neighbors)
     screen = { name: 'reader', state }
     lastError = null
     setReadingPosition({ novelId, episode, pageIndex: state.currentPage })
@@ -218,7 +237,13 @@ const unsubscribe = bridge.onEvenHubEvent((event) => {
     }
     if (hasEventType(event, OsEventTypeList.CLICK_EVENT)) {
       const novel = selectedItem(menu)
-      if (novel) goToChapterList(novel.id).catch((err) => console.error(err))
+      if (!novel) return
+      if (novel.id === CONTINUE_ID) {
+        const saved = getReadingPosition()
+        if (saved) goToReader(saved.novelId, saved.episode, saved.pageIndex).catch((err) => console.error(err))
+      } else {
+        goToChapterList(novel.id).catch((err) => console.error(err))
+      }
       return
     }
   }
@@ -244,14 +269,24 @@ const unsubscribe = bridge.onEvenHubEvent((event) => {
     const readerState = screen.state
 
     if (hasEventType(event, OsEventTypeList.SCROLL_TOP_EVENT)) {
-      turnReaderPage(readerState, readerState.currentPage - 1).catch((err) => console.error(err))
+      // Prev-page; at the top, roll over to the previous chapter's last page.
+      if (readerState.currentPage <= 0 && readerState.prevEpisode) {
+        goToReader(readerState.novelId, readerState.prevEpisode, -1).catch((err) => console.error(err))
+      } else {
+        turnReaderPage(readerState, readerState.currentPage - 1).catch((err) => console.error(err))
+      }
       return
     }
     if (
       hasEventType(event, OsEventTypeList.SCROLL_BOTTOM_EVENT) ||
       hasEventType(event, OsEventTypeList.CLICK_EVENT)
     ) {
-      turnReaderPage(readerState, readerState.currentPage + 1).catch((err) => console.error(err))
+      // Next-page; at the end, roll over to the next chapter.
+      if (readerState.currentPage >= readerState.pages.length - 1 && readerState.nextEpisode) {
+        goToReader(readerState.novelId, readerState.nextEpisode, 0).catch((err) => console.error(err))
+      } else {
+        turnReaderPage(readerState, readerState.currentPage + 1).catch((err) => console.error(err))
+      }
       return
     }
   }
