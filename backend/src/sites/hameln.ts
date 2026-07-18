@@ -64,6 +64,11 @@ export const hamelnAdapter: NovelSiteAdapter = {
     return { title, author, chapters };
   },
 
+  // Hameln lists every chapter on a single TOC page.
+  parseTocPageCount(): number {
+    return 1;
+  },
+
   parseChapter(html: string): ChapterResult {
     const $ = cheerio.load(html);
     const titleSpan = $('span[style="font-size:120%"]')

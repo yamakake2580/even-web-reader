@@ -13,14 +13,24 @@ function fetchOptionsFor(adapter: NovelSiteAdapter): { cookies?: CookieInput[] }
 }
 
 export async function registerNovel(novelId: string, adapter: NovelSiteAdapter): Promise<store.StoredNovel> {
-  const html = await fetchHtml(adapter.tocUrl(novelId), fetchOptionsFor(adapter));
-  const toc = adapter.parseToc(html);
+  const options = fetchOptionsFor(adapter);
+  const firstHtml = await fetchHtml(adapter.tocUrl(novelId, 1), options);
+  const toc = adapter.parseToc(firstHtml);
+  const chapters = [...toc.chapters];
+
+  // Sites whose TOC is paginated (Narou: 100/page) need the remaining pages.
+  const pageCount = adapter.parseTocPageCount(firstHtml);
+  for (let page = 2; page <= pageCount; page++) {
+    const html = await fetchHtml(adapter.tocUrl(novelId, page), options);
+    chapters.push(...adapter.parseToc(html).chapters);
+  }
+
   const novel: store.StoredNovel = {
     id: novelId,
     site: adapter.key,
     title: toc.title,
     author: toc.author,
-    chapters: toc.chapters,
+    chapters,
   };
   await store.saveNovel(novel);
   return novel;
