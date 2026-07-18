@@ -328,7 +328,7 @@ app.innerHTML = `
       </label>
       <button id="backendUrlSave" style="padding:8px;border-radius:6px;border:none;background:#3E3E3E;color:#E5E5E5;cursor:pointer;">Save backend URL</button>
       <label style="font-size:12px;color:#919191;display:flex;flex-direction:column;gap:4px;">
-        小説のURLで追加（ハーメルン / なろう）
+        小説のURLで追加（ハーメルン / なろう / カクヨム）
         <input id="novelUrlInput" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://ncode.syosetu.com/n9669bk/" style="padding:8px;border-radius:6px;border:1px solid #3E3E3E;background:#1E1E1E;color:#E5E5E5;" />
       </label>
       <button id="novelUrlAdd" style="padding:8px;border-radius:6px;border:none;background:#3E3E3E;color:#E5E5E5;cursor:pointer;">Add novel</button>
