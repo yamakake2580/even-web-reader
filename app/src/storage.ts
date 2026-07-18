@@ -160,3 +160,24 @@ export async function readCachedJson<T>(key: string): Promise<T | null> {
     return null
   }
 }
+
+// The bridge has no "delete key" call; storing an empty string reads back as
+// "not present" everywhere (getOfflineChapter/readCachedJson treat empty as
+// null), which is how we clear a key.
+export async function removeKey(key: string): Promise<void> {
+  if (!bridgeRef) return
+  try {
+    await bridgeRef.setLocalStorage(key, '')
+  } catch (err) {
+    console.error(`removeKey(${key}) failed:`, err)
+  }
+}
+
+/** Frees all local storage a novel used: every downloaded chapter and its index. */
+export async function deleteOfflineNovel(novelId: string): Promise<void> {
+  const index = await getChapterIndex(novelId)
+  for (const episode of index) {
+    await removeKey(chapterKey(novelId, episode))
+  }
+  await removeKey(chapterIndexKey(novelId))
+}

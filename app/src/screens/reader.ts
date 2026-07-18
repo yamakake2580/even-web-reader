@@ -1,7 +1,7 @@
 import { TextContainerProperty, TextContainerUpgrade, type EvenAppBridge } from '@evenrealities/even_hub_sdk'
 import { fetchChapter } from '../api'
 import { paginate } from '../paginate'
-import { getOfflineChapter, saveOfflineChapter } from '../storage'
+import { getOfflineChapter } from '../storage'
 import type { PageSpec } from './types'
 
 // Body container geometry. Inner box (width/height minus padding and border)
@@ -22,14 +22,12 @@ export interface ReaderState {
 }
 
 export async function loadReader(novelId: string, episode: string, startPage = 0): Promise<{ state: ReaderState; spec: PageSpec }> {
-  // Offline-first: a chapter saved locally (via reading it before, or via
-  // bulk download) needs no backend at all. Only fall back to the backend
-  // when there is no local copy, and save what we get for next time.
+  // Offline-first: a chapter saved locally (via an explicit download) needs
+  // no backend. Otherwise fetch from the backend WITHOUT saving - just
+  // reading a chapter no longer consumes local storage; downloading is only
+  // done deliberately from the phone's download buttons.
   const offline = await getOfflineChapter(novelId, episode)
   const chapter = offline ?? (await fetchChapter(novelId, episode))
-  if (!offline) {
-    saveOfflineChapter(novelId, episode, chapter).catch((err) => console.error(err))
-  }
   const pages = paginate(chapter.text, { width: INNER_W, height: INNER_H })
   const currentPage = pages.length === 0 ? 0 : Math.min(Math.max(startPage, 0), pages.length - 1)
   const state: ReaderState = { novelId, episode, title: chapter.title, pages, currentPage }

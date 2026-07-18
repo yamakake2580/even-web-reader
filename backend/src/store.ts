@@ -59,6 +59,13 @@ export async function loadNovel(id: string): Promise<StoredNovel | null> {
   return readJson<StoredNovel>(path.join(NOVELS_DIR, `${id}.json`));
 }
 
+/** Removes a novel from the bookshelf: its metadata and any cached chapters. */
+export async function deleteNovel(id: string): Promise<void> {
+  assertSafeId(id);
+  await fs.rm(path.join(NOVELS_DIR, `${id}.json`), { force: true });
+  await fs.rm(path.join(CHAPTERS_DIR, id), { recursive: true, force: true });
+}
+
 export async function listNovels(): Promise<StoredNovel[]> {
   await ensureDir(NOVELS_DIR);
   const files = await fs.readdir(NOVELS_DIR);

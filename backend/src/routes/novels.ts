@@ -58,6 +58,19 @@ novelsRouter.get("/", async (_req, res, next) => {
   }
 });
 
+novelsRouter.delete("/:id", async (req, res, next) => {
+  if (!store.isSafeId(req.params.id)) {
+    res.status(400).json({ error: "invalid id" });
+    return;
+  }
+  try {
+    await store.deleteNovel(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 novelsRouter.get("/:id", async (req, res, next) => {
   if (!store.isSafeId(req.params.id)) {
     res.status(400).json({ error: "invalid id" });

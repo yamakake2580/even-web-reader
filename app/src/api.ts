@@ -1,4 +1,4 @@
-import { cacheJson, getOfflineChapters, getStorage, readCachedJson } from './storage'
+import { cacheJson, deleteOfflineNovel, getOfflineChapters, getStorage, readCachedJson, removeKey } from './storage'
 
 const DEFAULT_BACKEND_URL = 'http://localhost:8787'
 
@@ -102,6 +102,20 @@ export async function registerNovel(url: string): Promise<NovelSummary> {
   })
   if (!res.ok) throw new Error(`POST /novels failed: ${res.status}`)
   return res.json()
+}
+
+/**
+ * Removes a novel from the bookshelf: deletes it on the backend, then clears
+ * every local trace (downloaded chapters, cached chapter list, and the entry
+ * in the cached bookshelf) so it won't reappear from the offline cache.
+ */
+export async function deleteNovel(novelId: string): Promise<void> {
+  const res = await fetch(`${getBackendUrl()}/novels/${encodeURIComponent(novelId)}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`DELETE /novels failed: ${res.status}`)
+  await deleteOfflineNovel(novelId)
+  await removeKey(novelDetailKey(novelId))
+  const cached = await readCachedJson<NovelSummary[]>(NOVELS_CACHE_KEY)
+  if (cached) await cacheJson(NOVELS_CACHE_KEY, cached.filter((n) => n.id !== novelId))
 }
 
 export interface FavoriteNovel {

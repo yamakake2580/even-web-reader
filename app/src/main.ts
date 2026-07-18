@@ -7,6 +7,7 @@ import {
   type EvenHubEvent,
 } from '@evenrealities/even_hub_sdk'
 import {
+  deleteNovel,
   fetchChapter,
   fetchFavoritesPage,
   fetchNovel,
@@ -495,8 +496,9 @@ async function loadNovelPicker(): Promise<void> {
         .map(
           (n, i) => `
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #3E3E3E;">
-          <span style="font-size:13px;">${escapeHtml(nonEmptyLabel(n.title))}</span>
+          <span style="font-size:13px;flex:1;">${escapeHtml(nonEmptyLabel(n.title))}</span>
           <button data-novel-index="${i}" style="padding:4px 8px;border-radius:6px;border:none;background:#3E3E3E;color:#E5E5E5;cursor:pointer;flex-shrink:0;">話数を見る</button>
+          <button data-del-index="${i}" style="padding:4px 8px;border-radius:6px;border:none;background:#5A2E2E;color:#E5E5E5;cursor:pointer;flex-shrink:0;">削除</button>
         </div>`,
         )
         .join('')
@@ -504,6 +506,39 @@ async function loadNovelPicker(): Promise<void> {
         btn.addEventListener('click', () => {
           const novel = novels[Number(btn.dataset.novelIndex)]
           if (novel) loadPhoneChapterList(novel.id).catch((err) => console.error(err))
+        })
+      })
+      // Delete needs a two-tap confirm (a WebView confirm() dialog isn't
+      // reliable): first tap arms the button, second tap within a few seconds
+      // actually deletes.
+      listEl.querySelectorAll<HTMLButtonElement>('[data-del-index]').forEach((btn) => {
+        let armed = false
+        let armTimer: ReturnType<typeof setTimeout> | undefined
+        btn.addEventListener('click', () => {
+          const novel = novels[Number(btn.dataset.delIndex)]
+          if (!novel) return
+          if (!armed) {
+            armed = true
+            btn.textContent = '本当に削除?'
+            armTimer = setTimeout(() => {
+              armed = false
+              btn.textContent = '削除'
+            }, 4000)
+            return
+          }
+          if (armTimer) clearTimeout(armTimer)
+          btn.disabled = true
+          btn.textContent = '削除中...'
+          deleteNovel(novel.id)
+            .then(() => loadNovelPicker())
+            .then(() => {
+              if (screen?.name === 'bookshelf') return goToBookshelf()
+            })
+            .catch((err) => {
+              console.error(err)
+              btn.disabled = false
+              btn.textContent = '削除失敗'
+            })
         })
       })
     }
