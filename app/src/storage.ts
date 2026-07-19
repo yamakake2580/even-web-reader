@@ -180,4 +180,27 @@ export async function deleteOfflineNovel(novelId: string): Promise<void> {
     await removeKey(chapterKey(novelId, episode))
   }
   await removeKey(chapterIndexKey(novelId))
+  await removeKey(`seen_count:${novelId}`)
+}
+
+// Last chapter count the user has seen for a novel, used to flag serials that
+// gained chapters since. Returns null when never recorded (so the bookshelf
+// can initialise it silently instead of flagging every novel as "new").
+export async function getSeenChapterCount(novelId: string): Promise<number | null> {
+  if (!bridgeRef) return null
+  try {
+    const raw = await bridgeRef.getLocalStorage(`seen_count:${novelId}`)
+    return raw ? Number(raw) : null
+  } catch {
+    return null
+  }
+}
+
+export async function setSeenChapterCount(novelId: string, count: number): Promise<void> {
+  if (!bridgeRef) return
+  try {
+    await bridgeRef.setLocalStorage(`seen_count:${novelId}`, String(count))
+  } catch (err) {
+    console.error(`setSeenChapterCount(${novelId}) failed:`, err)
+  }
 }

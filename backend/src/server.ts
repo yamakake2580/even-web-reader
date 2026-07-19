@@ -2,8 +2,10 @@ import express, { type ErrorRequestHandler } from "express";
 import { requireAuth } from "./auth.js";
 import { config } from "./config.js";
 import { shutdownFetcher } from "./fetcher.js";
+import { refreshRouter } from "./routes/refresh.js";
 import { favoritesRouter } from "./routes/favorites.js";
 import { novelsRouter } from "./routes/novels.js";
+import { startRefreshScheduler } from "./refresh.js";
 
 const app = express();
 app.use(express.json());
@@ -25,6 +27,7 @@ app.get("/health", (_req, res) => {
 
 app.use("/novels", requireAuth, novelsRouter);
 app.use("/favorites", requireAuth, favoritesRouter);
+app.use("/refresh", requireAuth, refreshRouter);
 
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   console.error(err);
@@ -34,6 +37,7 @@ app.use(errorHandler);
 
 const server = app.listen(config.port, () => {
   console.log(`even-web-reader backend listening on :${config.port}`);
+  startRefreshScheduler();
 });
 
 async function shutdown(): Promise<void> {

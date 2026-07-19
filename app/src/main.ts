@@ -29,6 +29,7 @@ import {
   isChapterSavedOffline,
   saveOfflineChapter,
   setReadingPosition,
+  setSeenChapterCount,
   setStorage,
 } from './storage'
 
@@ -125,6 +126,9 @@ async function goToChapterList(novelId: string): Promise<void> {
     const { state, spec } = await loadChapterList(novelId, lastReadEpisode)
     screen = { name: 'chapterList', state }
     lastError = null
+    // Opening the chapter list means the user has seen these chapters - clear
+    // the bookshelf's ★ new-chapters flag for this novel.
+    setSeenChapterCount(novelId, state.chapters.length).catch((err) => console.error(err))
     await present(spec)
   } catch (err) {
     console.error(err)

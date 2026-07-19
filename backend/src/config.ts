@@ -9,4 +9,6 @@ export const config = {
   // automate the Hameln login flow itself). Used only for the favorites
   // import feature.
   hamelnCookie: process.env.HAMELN_COOKIE ?? "",
+  // How often to re-fetch every novel's TOC to pick up new chapters. 0 = off.
+  refreshIntervalHours: Number(process.env.REFRESH_INTERVAL_HOURS ?? 6),
 };
