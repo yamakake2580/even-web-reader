@@ -1,4 +1,5 @@
 import { TextContainerProperty, TextContainerUpgrade, type EvenAppBridge } from '@evenrealities/even_hub_sdk'
+import { pxTruncate } from '@evenrealities/pretext'
 
 // Selectable menus are built from TEXT containers with a moving cursor, NOT
 // the native list container - per the community UI patterns doc, that is the
@@ -15,6 +16,12 @@ const BODY_ID = 2
 const BODY_NAME = 'menuBody'
 // ~27px line height on a 288px canvas; leave a line for the header.
 const VISIBLE_ROWS = 8
+// Inner text width of the 576px-wide containers (minus 4px padding each side).
+// Every row is truncated to fit on ONE line: if the body text overflows the
+// container (e.g. long chapter titles wrapping), the firmware takes over the
+// swipe to scroll the text internally instead of sending scroll events to us,
+// so the cursor stops moving and the list "scrolls" on its own.
+const INNER_WIDTH = 576 - 2 * 4
 
 export interface MenuItem<T> {
   label: string
@@ -44,7 +51,7 @@ function clampWindowStart(cursor: number, total: number): number {
 
 function headerText<T>(state: MenuState<T>): string {
   const pos = state.items.length === 0 ? '' : `  (${state.cursor + 1}/${state.items.length})`
-  return `${state.title}${pos}`
+  return pxTruncate(`${state.title.replace(/\s+/g, ' ').trim()}${pos}`, INNER_WIDTH)
 }
 
 function bodyText<T>(state: MenuState<T>): string {
@@ -52,7 +59,10 @@ function bodyText<T>(state: MenuState<T>): string {
   const end = Math.min(state.windowStart + VISIBLE_ROWS, state.items.length)
   const lines: string[] = []
   for (let i = state.windowStart; i < end; i++) {
-    lines.push(`${i === state.cursor ? '▶ ' : '   '}${state.items[i].label}`)
+    // Collapse any embedded newlines/tabs first - a multi-line label would
+    // overflow the container even after truncation.
+    const label = state.items[i].label.replace(/\s+/g, ' ').trim()
+    lines.push(pxTruncate(`${i === state.cursor ? '▶ ' : '   '}${label}`, INNER_WIDTH))
   }
   return lines.join('\n')
 }

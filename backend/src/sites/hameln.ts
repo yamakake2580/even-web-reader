@@ -16,6 +16,22 @@ export function hamelnFetchOptions(): { cookies?: CookieInput[] } {
   return config.hamelnCookie ? { cookies: parseHamelnCookieString(config.hamelnCookie) } : {};
 }
 
+// Some Hameln TOC layouts put the update timestamp and an "(改)" (revised)
+// tag inside the chapter link itself, so the raw anchor text spans several
+// lines ("一話 転入初日\n\t\t2017/03/13 20:36\n\t\t(改)"), occasionally with a
+// lone marker line like "●" in front. Keep only the real title text on one
+// line - multi-line titles overflow the glasses menu.
+export function cleanChapterTitle(raw: string): string {
+  const parts = raw
+    .split(/\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !/^\d{4}\/\d{1,2}\/\d{1,2}( \d{1,2}:\d{2})?$/.test(line))
+    .filter((line) => line !== "(改)")
+    .filter((line) => !/^[●○◆◇■□★☆※・]$/.test(line));
+  return parts.join(" ");
+}
+
 function extractNovelId(url: string): string {
   const match = url.match(/\/novel\/(\d+)\//);
   if (!match) {
@@ -57,7 +73,7 @@ export const hamelnAdapter: NovelSiteAdapter = {
       const href = $(el).attr("href") ?? "";
       const match = href.match(/^\.\/(\d+)\.html$/);
       if (!match) return;
-      chapters.push({ episode: match[1], title: $(el).text().trim() });
+      chapters.push({ episode: match[1], title: cleanChapterTitle($(el).text()) });
     });
     chapters.sort((a, b) => Number(a.episode) - Number(b.episode));
 
